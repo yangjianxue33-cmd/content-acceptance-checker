@@ -35,6 +35,16 @@ function calculateDimension(module: CompletedModule): number {
 export function calculateReviewScore(
   modules: ReadonlyArray<CompletedModule>,
 ): ReviewScore | null {
+  const completedModuleNames = new Set<AnalysisModule>();
+
+  for (const moduleResult of modules) {
+    if (completedModuleNames.has(moduleResult.module)) {
+      throw new RangeError(`Duplicate completed module: ${moduleResult.module}`);
+    }
+
+    completedModuleNames.add(moduleResult.module);
+  }
+
   if (modules.length < 2) {
     return null;
   }

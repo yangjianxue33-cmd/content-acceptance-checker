@@ -120,6 +120,16 @@ describe("calculateReviewScore", () => {
   it("returns null with fewer than two completed modules", () => {
     expect(calculateReviewScore([completedModule("brief_fit")])).toBeNull();
   });
+
+  it("rejects duplicate completed modules before scoring", () => {
+    expect(() =>
+      calculateReviewScore([
+        completedModule("brief_fit"),
+        completedModule("brief_fit"),
+        completedModule("evidence_citations"),
+      ]),
+    ).toThrow(new RangeError("Duplicate completed module: brief_fit"));
+  });
 });
 
 describe("completedModuleSchema", () => {
