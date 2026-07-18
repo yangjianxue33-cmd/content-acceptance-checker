@@ -17,14 +17,66 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  supplied_files jsonb := coalesce(p_files, '[]'::jsonb);
+  source_file_count integer;
+  brief_file_count integer;
+  source_filename text;
 begin
-  if p_access_token_hash is null or length(trim(p_access_token_hash)) = 0 then
-    raise exception 'anonymous access token hash is required'
+  if p_access_token_hash is null or p_access_token_hash !~ '^[0-9a-f]{64}$' then
+    raise exception 'anonymous access token hash must be a lowercase sha256 digest'
       using errcode = '23514';
   end if;
 
   if p_source_text_encrypted is null or octet_length(p_source_text_encrypted) = 0 then
     raise exception 'encrypted source text is required'
+      using errcode = '23514';
+  end if;
+
+  if p_word_count < 0 or p_word_count > 5000 then
+    raise exception 'word count must be between 0 and 5000'
+      using errcode = '23514';
+  end if;
+
+  if p_delete_at < now() + interval '23 hours'
+    or p_delete_at > now() + interval '25 hours' then
+    raise exception 'anonymous retention must be approximately 24 hours'
+      using errcode = '23514';
+  end if;
+
+  if jsonb_typeof(supplied_files) <> 'array'
+    or jsonb_array_length(supplied_files) > 2 then
+    raise exception 'review files must be an array with at most two entries'
+      using errcode = '23514';
+  end if;
+
+  select
+    count(*) filter (where file_kind = 'source'),
+    count(*) filter (where file_kind = 'brief'),
+    max(original_filename) filter (where file_kind = 'source')
+  into source_file_count, brief_file_count, source_filename
+  from jsonb_to_recordset(supplied_files) as supplied_file(
+    file_kind public.file_kind,
+    original_filename text
+  );
+
+  if (p_brief_present and (p_status <> 'awaiting_brief_confirmation' or brief_file_count <> 1))
+    or (not p_brief_present and (p_status <> 'queued' or brief_file_count <> 0)) then
+    raise exception 'brief flag, status, and brief metadata are inconsistent'
+      using errcode = '23514';
+  end if;
+
+  if (p_source_input_type = 'uploaded_file' and (
+      p_original_filename is null
+      or length(trim(p_original_filename)) = 0
+      or source_file_count <> 1
+      or source_filename is distinct from p_original_filename
+    ))
+    or (p_source_input_type = 'pasted_text' and (
+      p_original_filename is not null
+      or source_file_count <> 0
+    )) then
+    raise exception 'source input and source metadata are inconsistent'
       using errcode = '23514';
   end if;
 
@@ -69,7 +121,7 @@ begin
     supplied_file.original_filename,
     supplied_file.mime_type,
     supplied_file.size_bytes
-  from jsonb_to_recordset(coalesce(p_files, '[]'::jsonb)) as supplied_file(
+  from jsonb_to_recordset(supplied_files) as supplied_file(
     file_kind public.file_kind,
     object_path text,
     original_filename text,

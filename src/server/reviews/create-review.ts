@@ -123,10 +123,13 @@ async function compensateUploads(
   if (uploadedPaths.length === 0) {
     return;
   }
-  try {
-    await storage.remove(uploadedPaths);
-  } catch {
-    // Cleanup is retried by retention operations; never expose object paths here.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await storage.remove(uploadedPaths);
+      return;
+    } catch {
+      // A later Alpha retention sweep also removes aged orphaned objects.
+    }
   }
 }
 
@@ -262,9 +265,14 @@ export async function createAnonymousReview(
   };
 }
 
-export function isSafeCreateReviewError(error: unknown) {
+export function isSafeCreateReviewError(
+  error: unknown,
+): error is
+  | CreateReviewError
+  | DocumentExtractionError
+  | DocumentValidationError {
   return (
-    error instanceof CreateReviewError ||
+    (error instanceof CreateReviewError && error.code !== "creation_failed") ||
     error instanceof DocumentExtractionError ||
     error instanceof DocumentValidationError
   );

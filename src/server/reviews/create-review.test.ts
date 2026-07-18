@@ -4,11 +4,15 @@ import { Buffer } from "node:buffer";
 
 import { describe, expect, test, vi } from "vitest";
 
-import { createReviewsPostHandler } from "@/app/api/reviews/route";
+import {
+  createReviewsPostHandler,
+  uploadedDocument,
+} from "@/app/api/reviews/route";
 import type { UploadedDocument } from "@/server/documents/contracts";
 import { DocumentExtractionError } from "@/server/documents/extract-text";
 import {
   createAnonymousReview,
+  CreateReviewError,
   type ReviewCreationRecord,
   type ReviewCreationStorage,
 } from "./create-review";
@@ -23,7 +27,9 @@ function words(count: number) {
   );
 }
 
-function createHarness(options: { repositoryFailure?: Error } = {}) {
+function createHarness(
+  options: { repositoryFailure?: Error; removalFailures?: number } = {},
+) {
   const uploads: Parameters<ReviewCreationStorage["upload"]>[0][] = [];
   const removals: string[][] = [];
   const persisted: ReviewCreationRecord[] = [];
@@ -33,6 +39,9 @@ function createHarness(options: { repositoryFailure?: Error } = {}) {
     },
     async remove(paths) {
       removals.push([...paths]);
+      if (removals.length <= (options.removalFailures ?? 0)) {
+        throw new Error("cleanup_failed");
+      }
     },
   };
   const dependencies = {
@@ -269,6 +278,25 @@ describe("createAnonymousReview", () => {
       [`${reviewId}/source.txt`, `${reviewId}/brief.txt`],
     ]);
   });
+
+  test("retries compensating deletion three times before giving up", async () => {
+    const harness = createHarness({
+      repositoryFailure: new Error("rpc_failed"),
+      removalFailures: 3,
+    });
+
+    await expect(
+      createAnonymousReview(
+        { file: uploadedTxt(), contentType: "other" },
+        {
+          ...harness.dependencies,
+          extractText: async () => "Uploaded article body.",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "creation_failed" });
+
+    expect(harness.removals).toHaveLength(3);
+  });
 });
 
 describe("POST /api/reviews", () => {
@@ -332,5 +360,42 @@ describe("POST /api/reviews", () => {
       code: "unsupported_file_type",
       error: "We can review PDF, DOCX, or TXT files.",
     });
+  });
+
+  test("returns a generic 500 response for infrastructure creation failures", async () => {
+    const handler = createReviewsPostHandler({
+      createReview: vi.fn().mockRejectedValue(
+        new CreateReviewError("creation_failed", "internal detail"),
+      ),
+    });
+    const formData = new FormData();
+    formData.set("contentType", "other");
+    formData.set("bodyText", "Article");
+
+    const response = await handler(
+      new Request("https://checker.example/api/reviews", {
+        method: "POST",
+        body: formData,
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "We couldn't create this review. Try again.",
+    });
+  });
+
+  test("rejects oversized files before reading their bytes", async () => {
+    const arrayBuffer = vi.fn();
+    const oversized = new File(["x"], "large.txt", { type: "text/plain" });
+    Object.defineProperties(oversized, {
+      size: { value: 10 * 1024 * 1024 + 1 },
+      arrayBuffer: { value: arrayBuffer },
+    });
+
+    await expect(uploadedDocument(oversized)).rejects.toMatchObject({
+      code: "file_too_large",
+    });
+    expect(arrayBuffer).not.toHaveBeenCalled();
   });
 });

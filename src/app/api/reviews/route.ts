@@ -1,7 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database, Json } from "@/types/database.generated";
-import type { UploadedDocument } from "@/server/documents/contracts";
+import {
+  ARTICLE_FILE_SIZE_LIMIT_BYTES,
+  type UploadedDocument,
+} from "@/server/documents/contracts";
+import { DocumentExtractionError } from "@/server/documents/extract-text";
 import {
   createAnonymousReview,
   isSafeCreateReviewError,
@@ -17,9 +21,15 @@ type RouteDependencies = {
   ) => ReturnType<CreateReview>;
 };
 
-async function uploadedDocument(value: FormDataEntryValue | null) {
+export async function uploadedDocument(value: FormDataEntryValue | null) {
   if (!(value instanceof File) || value.size === 0) {
     return undefined;
+  }
+  if (value.size > ARTICLE_FILE_SIZE_LIMIT_BYTES) {
+    throw new DocumentExtractionError(
+      "file_too_large",
+      "This file exceeds the 10 MB limit.",
+    );
   }
   return {
     name: value.name,

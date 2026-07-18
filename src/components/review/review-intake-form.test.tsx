@@ -62,6 +62,30 @@ describe("ReviewIntakeForm", () => {
     ).toBeDisabled();
   });
 
+  test("supports keyboard navigation between source tabs", async () => {
+    const user = userEvent.setup();
+    render(<ReviewIntakeForm />);
+
+    const pasteTab = screen.getByRole("tab", { name: "Paste text" });
+    const uploadTab = screen.getByRole("tab", { name: "Upload file" });
+    pasteTab.focus();
+    await user.keyboard("{ArrowRight}");
+
+    expect(uploadTab).toHaveFocus();
+    expect(uploadTab).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{ArrowRight}");
+    expect(pasteTab).toHaveFocus();
+    expect(pasteTab).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{End}");
+    expect(uploadTab).toHaveFocus();
+
+    await user.keyboard("{Home}");
+    expect(pasteTab).toHaveFocus();
+    expect(pasteTab).toHaveAttribute("aria-selected", "true");
+  });
+
   test("accepts under-300-word text with a visible AI-risk warning", async () => {
     const user = userEvent.setup();
     render(<ReviewIntakeForm />);
@@ -99,6 +123,9 @@ describe("ReviewIntakeForm", () => {
 
     await user.click(screen.getByRole("tab", { name: "Upload file" }));
     expect(screen.getByText("PDF, DOCX, or UTF-8 TXT · 10 MB max")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Word count is checked after upload/),
+    ).toHaveTextContent("Documents under 300 words continue without AI-writing risk");
 
     await user.upload(
       screen.getByLabelText("Choose article file"),
@@ -108,6 +135,22 @@ describe("ReviewIntakeForm", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "We can review PDF, DOCX, or TXT files.",
     );
+  });
+
+  test("clears the native file input when a selected file is removed", async () => {
+    const user = userEvent.setup();
+    render(<ReviewIntakeForm />);
+
+    await user.click(screen.getByRole("tab", { name: "Upload file" }));
+    const input = screen.getByLabelText("Choose article file");
+    await user.upload(
+      input,
+      new File(["article"], "article.txt", { type: "text/plain" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+
+    expect(input).toHaveValue("");
+    expect(screen.queryByText("article.txt")).not.toBeInTheDocument();
   });
 
   test("submits contentType, article, and optional brief then follows nextPath", async () => {

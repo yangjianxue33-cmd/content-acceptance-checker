@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(11);
+select plan(17);
 
 select ok(
   to_regprocedure(
@@ -61,7 +61,7 @@ select lives_ok(
   $$
     select public.create_anonymous_review(
       '44444444-4444-4444-8444-444444444441',
-      'hashed-token-task-4-success',
+      repeat('a', 64),
       'Transactional review',
       'blog_post',
       'uploaded_file',
@@ -70,7 +70,7 @@ select lives_ok(
       true,
       'awaiting_brief_confirmation',
       decode('001122334455', 'hex'),
-      '2026-07-19T08:00:00Z',
+      now() + interval '24 hours',
       '[
         {
           "file_kind": "source",
@@ -123,7 +123,7 @@ select throws_ok(
   $$
     select public.create_anonymous_review(
       '44444444-4444-4444-8444-444444444442',
-      'hashed-token-task-4-anon',
+      repeat('b', 64),
       'Forbidden review',
       'other',
       'pasted_text',
@@ -147,7 +147,7 @@ select throws_ok(
   $$
     select public.create_anonymous_review(
       '44444444-4444-4444-8444-444444444443',
-      'hashed-token-task-4-rollback',
+      repeat('c', 64),
       'Rollback review',
       'other',
       'uploaded_file',
@@ -175,9 +175,9 @@ select throws_ok(
       ]'::jsonb
     )
   $$,
-  '23505',
+  '23514',
   null,
-  'invalid file metadata aborts the RPC'
+  'inconsistent file metadata aborts the RPC before insertion'
 );
 reset role;
 
@@ -190,6 +190,62 @@ select results_eq(
   $$ values (0::bigint) $$,
   'review insertion rolls back with file metadata failure'
 );
+
+set local role service_role;
+select throws_ok(
+  $$ select public.create_anonymous_review(
+    '44444444-4444-4444-8444-444444444450', 'not-a-hash', 'Bad hash',
+    'other', 'pasted_text', null, 300, false, 'queued', decode('0011', 'hex'),
+    now() + interval '24 hours', '[]'::jsonb
+  ) $$,
+  '23514', null, 'RPC rejects a malformed token hash'
+);
+
+select throws_ok(
+  $$ select public.create_anonymous_review(
+    '44444444-4444-4444-8444-444444444451', repeat('d', 64), 'Too long',
+    'other', 'pasted_text', null, 5001, false, 'queued', decode('0011', 'hex'),
+    now() + interval '24 hours', '[]'::jsonb
+  ) $$,
+  '23514', null, 'RPC enforces the 5000 word ceiling'
+);
+
+select throws_ok(
+  $$ select public.create_anonymous_review(
+    '44444444-4444-4444-8444-444444444452', repeat('e', 64), 'Bad retention',
+    'other', 'pasted_text', null, 300, false, 'queued', decode('0011', 'hex'),
+    now() + interval '48 hours', '[]'::jsonb
+  ) $$,
+  '23514', null, 'RPC enforces approximately 24 hour retention'
+);
+
+select throws_ok(
+  $$ select public.create_anonymous_review(
+    '44444444-4444-4444-8444-444444444453', repeat('f', 64), 'Bad brief state',
+    'other', 'pasted_text', null, 300, true, 'queued', decode('0011', 'hex'),
+    now() + interval '24 hours', '[]'::jsonb
+  ) $$,
+  '23514', null, 'RPC binds the brief flag to status and metadata'
+);
+
+select throws_ok(
+  $$ select public.create_anonymous_review(
+    '44444444-4444-4444-8444-444444444454', repeat('1', 64), 'Missing source',
+    'other', 'uploaded_file', 'article.txt', 300, false, 'queued', decode('0011', 'hex'),
+    now() + interval '24 hours', '[]'::jsonb
+  ) $$,
+  '23514', null, 'RPC requires source metadata for uploaded files'
+);
+
+select throws_ok(
+  $$ select public.create_anonymous_review(
+    '44444444-4444-4444-8444-444444444455', repeat('2', 64), 'Bad files JSON',
+    'other', 'pasted_text', null, 300, false, 'queued', decode('0011', 'hex'),
+    now() + interval '24 hours', '{}'::jsonb
+  ) $$,
+  '23514', null, 'RPC rejects a non-array files payload'
+);
+reset role;
 
 select * from finish();
 

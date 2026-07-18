@@ -52,6 +52,8 @@ type ReviewIntakeFormProps = {
 export function ReviewIntakeForm({ onCreated }: ReviewIntakeFormProps) {
   const instanceId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pasteTabRef = useRef<HTMLButtonElement>(null);
+  const uploadTabRef = useRef<HTMLButtonElement>(null);
   const [activeTab, setActiveTab] = useState<"paste" | "upload">("paste");
   const [bodyText, setBodyText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -80,19 +82,43 @@ export function ReviewIntakeForm({ onCreated }: ReviewIntakeFormProps) {
     !isSubmitting;
 
   function chooseTab(nextTab: "paste" | "upload") {
-    if (nextTab === activeTab) return;
+    if (nextTab === activeTab) return true;
     const wouldReplace = activeTab === "paste" ? bodyText.trim() : file;
     if (
       wouldReplace &&
       !window.confirm("Replace the article source you already added?")
     ) {
-      return;
+      return false;
     }
     setBodyText("");
     setFile(null);
     setClientError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     setActiveTab(nextTab);
+    return true;
+  }
+
+  function handleTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+    if (!keys.includes(event.key)) return;
+    event.preventDefault();
+    const nextTab =
+      event.key === "Home"
+        ? "paste"
+        : event.key === "End"
+          ? "upload"
+          : activeTab === "paste"
+            ? "upload"
+            : "paste";
+    if (chooseTab(nextTab)) {
+      (nextTab === "paste" ? pasteTabRef : uploadTabRef).current?.focus();
+    }
+  }
+
+  function clearSelectedFile() {
+    setFile(null);
+    setClientError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function selectFile(selected: File | undefined) {
@@ -101,10 +127,12 @@ export function ReviewIntakeForm({ onCreated }: ReviewIntakeFormProps) {
     if (!selected) return;
     if (!supportedExtensions.includes(extensionOf(selected.name))) {
       setClientError("We can review PDF, DOCX, or TXT files.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
     if (selected.size > MAX_FILE_BYTES) {
       setClientError("This file exceeds the 10 MB limit.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
     setFile(selected);
@@ -184,6 +212,7 @@ export function ReviewIntakeForm({ onCreated }: ReviewIntakeFormProps) {
 
             <div className="source-tabs" role="tablist" aria-label="Article input method">
               <button
+                ref={pasteTabRef}
                 type="button"
                 role="tab"
                 id={`${instanceId}-paste-tab`}
@@ -191,10 +220,12 @@ export function ReviewIntakeForm({ onCreated }: ReviewIntakeFormProps) {
                 aria-selected={activeTab === "paste"}
                 tabIndex={activeTab === "paste" ? 0 : -1}
                 onClick={() => chooseTab("paste")}
+                onKeyDown={handleTabKeyDown}
               >
                 Paste text
               </button>
               <button
+                ref={uploadTabRef}
                 type="button"
                 role="tab"
                 id={`${instanceId}-upload-tab`}
@@ -202,6 +233,7 @@ export function ReviewIntakeForm({ onCreated }: ReviewIntakeFormProps) {
                 aria-selected={activeTab === "upload"}
                 tabIndex={activeTab === "upload" ? 0 : -1}
                 onClick={() => chooseTab("upload")}
+                onKeyDown={handleTabKeyDown}
               >
                 Upload file
               </button>
@@ -263,12 +295,17 @@ export function ReviewIntakeForm({ onCreated }: ReviewIntakeFormProps) {
                     onChange={(event) => selectFile(event.target.files?.[0])}
                   />
                   <p>PDF, DOCX, or UTF-8 TXT · 10 MB max</p>
+                  <p>
+                    Word count is checked after upload. Documents under 300
+                    words continue without AI-writing risk; documents over
+                    5,000 words are rejected.
+                  </p>
                 </div>
               </div>
               {file ? (
                 <div className="selected-file">
                   <span><strong>{file.name}</strong> · {(file.size / 1024).toFixed(1)} KB</span>
-                  <button type="button" onClick={() => selectFile(undefined)}>
+                  <button type="button" onClick={clearSelectedFile}>
                     Remove
                   </button>
                 </div>
