@@ -359,7 +359,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      create_anonymous_review: {
+        Args: {
+          p_access_token_hash: string
+          p_brief_present: boolean
+          p_content_type: Database["public"]["Enums"]["content_type"]
+          p_delete_at: string
+          p_files: Json
+          p_original_filename: string
+          p_review_id: string
+          p_source_input_type: Database["public"]["Enums"]["source_input_type"]
+          p_source_text_encrypted: string
+          p_status: Database["public"]["Enums"]["review_status"]
+          p_title: string
+          p_word_count: number
+        }
+        Returns: string
+      }
     }
     Enums: {
       ai_risk: "low" | "medium" | "high" | "not_assessed"
