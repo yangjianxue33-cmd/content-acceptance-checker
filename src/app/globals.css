@@ -914,6 +914,180 @@ a {
   text-underline-offset: 4px;
 }
 
+.progress-workspace {
+  width: min(1120px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 64px 0 96px;
+}
+
+.progress-board {
+  border: 1px solid var(--line);
+  border-top: 7px solid var(--ink);
+  background: var(--white);
+  box-shadow: 16px 18px 0 rgba(39, 110, 241, 0.08);
+}
+
+.progress-heading {
+  padding: 36px 40px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
+  align-items: end;
+  gap: 40px;
+}
+
+.progress-heading h1 {
+  max-width: 680px;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(2.8rem, 6vw, 5.4rem);
+  font-stretch: condensed;
+  font-weight: 800;
+  letter-spacing: -0.052em;
+  line-height: 0.92;
+}
+
+.progress-heading > p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.progress-error {
+  margin: 24px 40px 0;
+  padding: 14px 16px;
+  border-left: 4px solid var(--signal-red);
+  background: #fff4f2;
+  color: #7b2722;
+}
+
+.module-track {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.module-track li {
+  min-height: 92px;
+  padding: 0 40px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 22px;
+  position: relative;
+}
+
+.module-track li::before {
+  content: "";
+  width: 6px;
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #aebdd0;
+}
+
+.module-track li[data-status="reviewing"]::before {
+  background: var(--cobalt);
+  animation: progress-pulse 1.8s ease-in-out infinite;
+}
+
+.module-track li[data-status="complete"]::before,
+.module-track li[data-status="not_assessed"]::before {
+  background: #277a5b;
+}
+
+.module-track li[data-status="unavailable"]::before {
+  background: var(--amber);
+}
+
+.module-index,
+.module-status {
+  font-family: var(--font-geist-mono);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.module-index {
+  color: var(--cobalt);
+}
+
+.module-track strong,
+.module-track small {
+  display: block;
+}
+
+.module-track strong {
+  font-size: 1rem;
+}
+
+.module-track small {
+  margin-top: 5px;
+  color: #85520b;
+}
+
+.module-status {
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.progress-footer {
+  padding: 28px 40px;
+  background: #f8fbfe;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.progress-footer > p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.progress-footer > p strong {
+  color: var(--ink);
+}
+
+.progress-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.progress-actions button,
+.progress-actions a {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--cobalt);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.progress-actions button {
+  background: transparent;
+  color: var(--cobalt);
+  cursor: pointer;
+}
+
+.progress-actions a {
+  background: var(--cobalt);
+  color: var(--white);
+}
+
+@keyframes progress-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
 @media (max-width: 900px) {
   .review-workspace {
     grid-template-columns: 1fr;
@@ -931,7 +1105,8 @@ a {
   }
 
   .confirmation-intro,
-  .confirmation-layout {
+  .confirmation-layout,
+  .progress-heading {
     grid-template-columns: 1fr;
   }
 
@@ -986,6 +1161,37 @@ a {
   .confirmation-workspace {
     width: min(100% - 24px, 1240px);
     padding: 32px 0 56px;
+  }
+
+  .progress-workspace {
+    width: min(100% - 24px, 1120px);
+    padding: 32px 0 56px;
+  }
+
+  .progress-heading,
+  .progress-footer {
+    padding-right: 22px;
+    padding-left: 22px;
+  }
+
+  .module-track li {
+    padding: 18px 22px;
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .module-status {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .progress-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .progress-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .confirmation-intro h1,

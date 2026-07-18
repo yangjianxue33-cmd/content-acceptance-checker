@@ -90,6 +90,47 @@ export type Database = {
           },
         ]
       }
+      citation_checks: {
+        Row: {
+          created_at: string
+          id: string
+          module: Database["public"]["Enums"]["analysis_module"]
+          normalized_url: string | null
+          reason_code: string | null
+          result_category: string
+          review_id: string
+          status_code: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          module?: Database["public"]["Enums"]["analysis_module"]
+          normalized_url?: string | null
+          reason_code?: string | null
+          result_category: string
+          review_id: string
+          status_code?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          module?: Database["public"]["Enums"]["analysis_module"]
+          normalized_url?: string | null
+          reason_code?: string | null
+          result_category?: string
+          review_id?: string
+          status_code?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "citation_checks_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       issues: {
         Row: {
           confidence: Database["public"]["Enums"]["confidence_band"] | null
@@ -359,6 +400,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_analysis_module: {
+        Args: {
+          p_module: Database["public"]["Enums"]["analysis_module"]
+          p_review_id: string
+        }
+        Returns: boolean
+      }
       create_anonymous_review: {
         Args: {
           p_access_token_hash: string
@@ -376,6 +424,30 @@ export type Database = {
         }
         Returns: string
       }
+      finalize_review_analysis: {
+        Args: {
+          p_overall_score: number
+          p_recommendation: Database["public"]["Enums"]["system_recommendation"]
+          p_review_id: string
+        }
+        Returns: Database["public"]["Enums"]["review_status"]
+      }
+      persist_analysis_module_result: {
+        Args: {
+          p_ai_risk: Database["public"]["Enums"]["ai_risk"]
+          p_caveats: string[]
+          p_citation_checks: Json
+          p_error_code: string
+          p_issues: Json
+          p_module: Database["public"]["Enums"]["analysis_module"]
+          p_requirement_evaluations: Json
+          p_review_id: string
+          p_score: number
+          p_status: Database["public"]["Enums"]["module_status"]
+          p_summary: string
+        }
+        Returns: undefined
+      }
       replace_review_requirements: {
         Args: {
           p_access_token_hash: string
@@ -383,6 +455,10 @@ export type Database = {
           p_requirements: Json
           p_review_id: string
         }
+        Returns: Database["public"]["Enums"]["review_status"]
+      }
+      start_anonymous_review_analysis: {
+        Args: { p_access_token_hash: string; p_review_id: string }
         Returns: Database["public"]["Enums"]["review_status"]
       }
     }

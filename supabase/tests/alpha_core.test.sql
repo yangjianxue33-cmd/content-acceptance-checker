@@ -41,6 +41,7 @@ select results_eq(
   $$
     values
       ('analysis_modules'::text collate "C"),
+      ('citation_checks'::text collate "C"),
       ('issues'::text collate "C"),
       ('requirements'::text collate "C"),
       ('review_decisions'::text collate "C"),
@@ -66,6 +67,7 @@ select results_eq(
   $$
     values
       ('analysis_modules'::text collate "C"),
+      ('citation_checks'::text collate "C"),
       ('issues'::text collate "C"),
       ('requirements'::text collate "C"),
       ('review_decisions'::text collate "C"),
@@ -98,6 +100,7 @@ select results_eq(
         'reviews',
         'requirements',
         'analysis_modules',
+        'citation_checks',
         'issues',
         'review_decisions',
         'review_files'
@@ -108,6 +111,7 @@ select results_eq(
   $$
     values
       ('analysis_modules'::text collate "C"),
+      ('citation_checks'::text collate "C"),
       ('issues'::text collate "C"),
       ('requirements'::text collate "C"),
       ('review_decisions'::text collate "C"),
@@ -1309,6 +1313,10 @@ select results_eq(
       from public.analysis_modules
       where review_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'
       union all
+      select 'citation_checks', count(*)
+      from public.citation_checks
+      where review_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'
+      union all
       select 'issues', count(*)
       from public.issues
       where review_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'
@@ -1330,6 +1338,7 @@ select results_eq(
   $$
     values
       ('analysis_modules'::text, 0::bigint),
+      ('citation_checks'::text, 0::bigint),
       ('issues'::text, 0::bigint),
       ('requirements'::text, 0::bigint),
       ('review_decisions'::text, 0::bigint),
