@@ -183,6 +183,19 @@ describe("PUT /api/reviews/:id/decision", () => {
     expect(set).not.toHaveBeenCalled();
   });
 
+  test("returns a generic 400 for an invalid review UUID without calling the service", async () => {
+    const set = vi.fn();
+    const PUT = createDecisionRouteHandler({ set });
+
+    const response = await PUT(request({ decision: "ready" }), {
+      params: Promise.resolve({ id: "not-a-review-uuid" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid request." });
+    expect(set).not.toHaveBeenCalled();
+  });
+
   test("uses the same generic 404 for missing, wrong, or expired access", async () => {
     const PUT = createDecisionRouteHandler({
       set: vi.fn().mockRejectedValue(new ReviewDecisionAccessError()),

@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import {
   isUserDecision,
   ReviewDecisionAccessError,
@@ -6,6 +8,7 @@ import {
 } from "@/server/reviews/set-decision";
 
 type RouteContext = { params: Promise<{ id: string }> };
+const reviewIdSchema = z.uuid();
 
 function accessTokenFrom(request: Request) {
   const cookie = request.headers.get("cookie");
@@ -30,6 +33,11 @@ export function createDecisionRouteHandler(
 ) {
   return async function PUT(request: Request, context: RouteContext) {
     try {
+      const { id } = await context.params;
+      const parsedReviewId = reviewIdSchema.safeParse(id);
+      if (!parsedReviewId.success) {
+        return Response.json({ error: "Invalid request." }, { status: 400 });
+      }
       let payload: unknown;
       try {
         payload = await request.json();
@@ -43,10 +51,9 @@ export function createDecisionRouteHandler(
       if (!isUserDecision(decision)) {
         throw new ReviewDecisionValidationError();
       }
-      const { id: reviewId } = await context.params;
       return Response.json(
         await dependencies.set({
-          reviewId,
+          reviewId: parsedReviewId.data,
           accessToken: accessTokenFrom(request),
           decision,
         }),

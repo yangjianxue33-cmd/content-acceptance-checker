@@ -51,6 +51,17 @@ const LIMITS = {
   action: 400,
 } as const;
 
+const PROHIBITED_PUBLIC_CLAIM =
+  /\b(?:proof|prove|proves|proved|proven|proving|cheat|cheats|cheated|cheating|misconduct|reject|rejects|rejected|rejecting|rejection)\b/i;
+const SAFE_PUBLIC_CAVEAT =
+  "This caveat was neutralized because public report guidance must remain advisory.";
+const SAFE_AI_ISSUE_EXPLANATION =
+  "This passage contributed to an AI-writing-risk signal. The signal is advisory and cannot determine authorship or editorial outcome.";
+const SAFE_AI_ISSUE_ACTION =
+  "Review this signal in editorial context before making an acceptance decision.";
+const SAFE_HIGH_AI_ISSUE_ACTION =
+  "Complete a manual review using editorial context and source materials.";
+
 type ReviewRow = {
   anonymousAccessTokenHash: string | null;
   deleteAt: string;
@@ -154,6 +165,12 @@ function bounded(value: string, limit: number) {
   return `${value.slice(0, limit - 1).trimEnd()}…`;
 }
 
+function publicCaveat(value: string) {
+  return PROHIBITED_PUBLIC_CLAIM.test(value)
+    ? SAFE_PUBLIC_CAVEAT
+    : bounded(value, LIMITS.caveat);
+}
+
 function hashesMatch(actual: string, expected: string) {
   const actualBytes = Buffer.from(actual, "utf8");
   const expectedBytes = Buffer.from(expected, "utf8");
@@ -223,9 +240,7 @@ export async function getReviewReport(
   const modulesByName = new Map(
     moduleRows.map((module) => [module.module, module]),
   );
-  const highAiRisk =
-    modulesByName.get("ai_risk")?.status === "complete" &&
-    modulesByName.get("ai_risk")?.aiRisk === "high";
+  const reportedAiRisk = modulesByName.get("ai_risk")?.aiRisk ?? null;
 
   return {
     kind: "report",
@@ -269,9 +284,7 @@ export async function getReviewReport(
               ? [
                   "AI-writing-risk signals are advisory. Complete a manual review before deciding.",
                 ]
-              : row.caveats.map((caveat) =>
-                  bounded(caveat, LIMITS.caveat),
-                ),
+              : row.caveats.map(publicCaveat),
         };
       }),
       requirements: [...requirementRows]
@@ -301,7 +314,7 @@ export async function getReviewReport(
             left.id.localeCompare(right.id),
         )
         .map((issue) => {
-          const safeHighRiskIssue = highAiRisk && issue.module === "ai_risk";
+          const aiRiskIssue = issue.module === "ai_risk";
           return {
             module: issue.module,
             severity:
@@ -311,11 +324,13 @@ export async function getReviewReport(
             sourceExcerpt: issue.sourceExcerpt
               ? bounded(issue.sourceExcerpt, LIMITS.excerpt)
               : null,
-            explanation: safeHighRiskIssue
-              ? "This passage contributed to a high AI-writing-risk signal. The signal is advisory and does not prove authorship or misconduct."
+            explanation: aiRiskIssue
+              ? SAFE_AI_ISSUE_EXPLANATION
               : bounded(issue.explanation, LIMITS.explanation),
-            suggestedAction: safeHighRiskIssue
-              ? "Complete a manual review using editorial context and source materials."
+            suggestedAction: aiRiskIssue
+              ? reportedAiRisk === "high"
+                ? SAFE_HIGH_AI_ISSUE_ACTION
+                : SAFE_AI_ISSUE_ACTION
               : bounded(issue.suggestedAction, LIMITS.action),
           };
         }),

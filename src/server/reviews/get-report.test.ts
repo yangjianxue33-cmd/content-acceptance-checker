@@ -275,6 +275,90 @@ describe("getReviewReport", () => {
     expect(result.report.issues[0].severity).toBe("major");
   });
 
+  test.each(["low", "medium"] as const)(
+    "neutralizes unsafe %s AI-risk issue explanations and actions",
+    async (aiRisk) => {
+      const repo = repository({
+        loadModules: vi.fn().mockResolvedValue([
+          ...modules().slice(0, 3),
+          { ...modules()[3], aiRisk },
+        ]),
+        loadIssues: vi.fn().mockResolvedValue([
+          {
+            id: `unsafe-${aiRisk}-ai-copy`,
+            module: "ai_risk",
+            severity: "major",
+            sourceExcerpt: "A passage for context",
+            sourceStart: 10,
+            explanation: "This proves the author was cheating and committed misconduct.",
+            suggestedAction: "Reject the submission as proof of AI authorship.",
+            createdAt: "2026-07-19T10:00:00.000Z",
+          },
+        ]),
+      });
+
+      const result = await load(repo);
+      if (result.kind !== "report") throw new Error("expected report");
+      const publicIssue = result.report.issues[0];
+      const publicCopy = `${publicIssue.explanation} ${publicIssue.suggestedAction}`;
+
+      expect(publicIssue.explanation).toMatch(/advisory/i);
+      expect(publicIssue.suggestedAction).toMatch(/editorial context/i);
+      expect(publicCopy).not.toMatch(
+        /\b(?:proof|prove|proves|proved|proven|proving|cheating|misconduct|reject|rejection)\b/i,
+      );
+    },
+  );
+
+  test("neutralizes unsafe caveats for every module while preserving safe caveats and non-AI issue actions", async () => {
+    const repo = repository({
+      loadModules: vi.fn().mockResolvedValue([
+        {
+          ...modules()[0],
+          caveats: ["This proves the author was cheating and requires rejection."],
+        },
+        {
+          ...modules()[1],
+          caveats: ["Citation checks reflect link availability at review time."],
+        },
+        {
+          ...modules()[2],
+          caveats: ["Reject this article as misconduct."],
+        },
+        {
+          ...modules()[3],
+          aiRisk: "low",
+          caveats: ["Proof of AI authorship."],
+        },
+      ]),
+      loadIssues: vi.fn().mockResolvedValue([
+        {
+          id: "legitimate-editorial-action",
+          module: "editorial_quality",
+          severity: "major",
+          sourceExcerpt: "An unsupported transition",
+          sourceStart: 10,
+          explanation: "The transition does not connect the claims.",
+          suggestedAction: "Remove the unsupported transition before approval.",
+          createdAt: "2026-07-19T10:00:00.000Z",
+        },
+      ]),
+    });
+
+    const result = await load(repo);
+    if (result.kind !== "report") throw new Error("expected report");
+    const caveats = result.report.modules.flatMap((module) => module.caveats);
+
+    expect(caveats[1]).toBe("Citation checks reflect link availability at review time.");
+    expect(caveats.join(" ")).toMatch(/advisory/i);
+    expect(caveats.join(" ")).not.toMatch(
+      /\b(?:proof|prove|proves|proved|proven|proving|cheating|misconduct|reject|rejection)\b/i,
+    );
+    expect(result.report.issues[0].suggestedAction).toBe(
+      "Remove the unsupported transition before approval.",
+    );
+  });
+
   test("returns only the progress path for an authenticated nonterminal review", async () => {
     const repo = repository({
       loadReview: vi.fn().mockResolvedValue(review({ status: "reviewing" })),
