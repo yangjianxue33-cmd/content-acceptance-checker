@@ -35,12 +35,12 @@
 
 - Production Task 5 code contains no `console` logging and sends no article text, complete brief text, token, or token hash in JSON, URLs, client props, provider metadata, or errors.
 - Only editable requirement text and intentionally cited source excerpts are passed to the client editor.
-- Provider requests carry article and brief text only as base64 fields in a strict JSON envelope; instructions explicitly classify the decoded fields as untrusted data and prohibit following embedded instructions.
+- Provider requests carry article and brief text as JSON-escaped UTF-8 string fields in one strict envelope; instructions classify the complete fields as untrusted data and prohibit following embedded instructions.
 - `.env.example` already contained empty placeholders for `OPENAI_API_KEY` and `OPENAI_ANALYSIS_MODEL`; no environment-file change was needed.
 
 ## Independent review follow-up
 
-- Replaced escapable XML-like prompt delimiters with a deterministic JSON envelope containing explicit `base64` encoding and UTF-8 article/brief fields. Adversarial tests include closing tags, role-shaped JSON, and injection text; they prove the request remains exactly one system message plus one user message and raw structural/injection text never enters the prompt framing.
+- Replaced escapable XML-like prompt delimiters with a deterministic JSON envelope containing JSON-escaped UTF-8 article/brief fields. Adversarial tests include closing tags, role-shaped JSON, and injection text; they prove the request remains exactly one system message plus one user message while preserving the source text losslessly for analysis and exact excerpts.
 - Extended `replace_review_requirements` with `p_access_token_hash`. The service derives the HMAC and passes only that hash to the repository/RPC; the raw cookie token never reaches Postgres.
 - The RPC now locks the parent row, then checks existence, hash equality, and `delete_at > now()` before idempotent return, payload validation, deletion, insertion, or status transition. Missing, wrong, and expired access all raise the same safe `P0001: review_access_denied`, which the route maps through `RequirementsAccessError` to the existing generic 404 response.
 - Added service regressions for revocation/expiry between initial load and atomic replacement, plus pgTAP assertions for wrong hash, expired review, missing review, unchanged requirements, and unchanged status.
