@@ -206,6 +206,38 @@ create trigger review_files_enforce_object_path_prefix
 before insert or update of review_id, object_path on public.review_files
 for each row execute function public.enforce_review_file_object_path_prefix();
 
+create function public.prevent_review_owner_boundary_change_with_files()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.owner_id is not distinct from old.owner_id
+    and new.anonymous_access_token_hash is not distinct from old.anonymous_access_token_hash
+  then
+    return new;
+  end if;
+
+  if exists (
+    select 1
+    from public.review_files
+    where review_files.review_id = old.id
+  ) then
+    raise exception 'review owner boundary cannot change while files exist'
+      using
+        errcode = '23514',
+        constraint = 'reviews_owner_boundary_with_files';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger reviews_prevent_owner_boundary_change_with_files
+before update of owner_id, anonymous_access_token_hash on public.reviews
+for each row execute function public.prevent_review_owner_boundary_change_with_files();
+
 create index reviews_owner_id_idx on public.reviews(owner_id);
 create index reviews_delete_at_idx on public.reviews(delete_at);
 create index requirements_review_id_idx on public.requirements(review_id);
@@ -258,6 +290,8 @@ revoke all on table public.review_decisions from public, anon, authenticated;
 revoke all on table public.review_files from public, anon, authenticated;
 revoke all on function public.set_updated_at() from public, anon, authenticated;
 revoke all on function public.enforce_review_file_object_path_prefix()
+from public, anon, authenticated;
+revoke all on function public.prevent_review_owner_boundary_change_with_files()
 from public, anon, authenticated;
 
 grant select (

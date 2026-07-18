@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(66);
+select plan(69);
 
 select has_table('public', 'reviews', 'reviews table exists');
 select has_table('public', 'requirements', 'requirements table exists');
@@ -479,6 +479,66 @@ select throws_ok(
   'service-role writes require an authenticated review file path to start with owner_id'
 );
 delete from public.review_files where id = 'ffffffff-ffff-4fff-8fff-ffffffffff01';
+
+select lives_ok(
+  $$
+    insert into public.review_files (
+      id,
+      review_id,
+      file_kind,
+      object_path,
+      mime_type,
+      size_bytes
+    ) values (
+      'ffffffff-ffff-4fff-8fff-ffffffffff03',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'source',
+      '11111111-1111-4111-8111-111111111111/owner-boundary.txt',
+      'text/plain',
+      100
+    );
+
+    update public.reviews
+    set status = 'reviewing'
+    where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3';
+  $$,
+  'service-role can create a valid file and update non-owner review fields'
+);
+select throws_ok(
+  $$
+    update public.reviews
+    set owner_id = '22222222-2222-4222-8222-222222222222'
+    where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3'
+  $$,
+  '23514',
+  null,
+  'service-role cannot change a review owner boundary while files exist'
+);
+select results_eq(
+  $$
+    select
+      reviews.owner_id,
+      split_part(review_files.object_path, '/', 1)::text collate "C"
+    from public.reviews
+    join public.review_files
+      on review_files.review_id = reviews.id
+    where reviews.id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3'
+      and review_files.id = 'ffffffff-ffff-4fff-8fff-ffffffffff03'
+  $$,
+  $$
+    values (
+      '11111111-1111-4111-8111-111111111111'::uuid,
+      '11111111-1111-4111-8111-111111111111'::text collate "C"
+    )
+  $$,
+  'a rejected owner-boundary update preserves the valid file prefix'
+);
+update public.reviews
+set
+  owner_id = '11111111-1111-4111-8111-111111111111',
+  status = 'draft'
+where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3';
+delete from public.review_files where id = 'ffffffff-ffff-4fff-8fff-ffffffffff03';
 
 select lives_ok(
   $$
@@ -1150,7 +1210,7 @@ select results_eq(
 
 \else
 
-select * from skip(50, 'alpha schema migration is not present yet');
+select * from skip(53, 'alpha schema migration is not present yet');
 
 \endif
 
