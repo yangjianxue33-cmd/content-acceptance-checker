@@ -50,7 +50,7 @@ describe("POST /api/reviews/:id/start", () => {
     expect(await response.json()).toEqual({
       reviewId,
       status: "completed",
-      reportPath: `/review/report/${reviewId}`,
+      reportPath: `/report/${reviewId}`,
     });
     expect(enqueue).not.toHaveBeenCalled();
   });
@@ -78,7 +78,7 @@ describe("GET /api/reviews/:id/status", () => {
       status: "partial",
       terminal: true,
       reportReady: true,
-      reportPath: `/review/report/${reviewId}`,
+      reportPath: `/report/${reviewId}`,
       modules: [
         { module: "brief_fit", label: "Brief fit", status: "complete", error: null },
         { module: "evidence_citations", label: "Evidence & citations", status: "unavailable", error: "Check temporarily unavailable." },

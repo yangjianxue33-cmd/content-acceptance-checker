@@ -101,13 +101,13 @@ export async function loadProductionReviewStatus(input: {
   );
   const status = review.status as ReviewProgressStatus;
   const terminal = status === "completed" || status === "partial" || status === "failed";
-  const reportReady = status === "completed" || status === "partial";
+  const reportReady = terminal;
   return {
     reviewId: input.reviewId,
     status,
     terminal,
     reportReady,
-    reportPath: reportReady ? `/review/report/${input.reviewId}` : null,
+    reportPath: reportReady ? `/report/${input.reviewId}` : null,
     modules: ANALYSIS_MODULES.map((module) => {
       const moduleStatus = statuses.get(module) ?? "queued";
       return {

@@ -457,6 +457,14 @@ export type Database = {
         }
         Returns: Database["public"]["Enums"]["review_status"]
       }
+      set_anonymous_review_decision: {
+        Args: {
+          p_access_token_hash: string
+          p_decision: Database["public"]["Enums"]["user_decision"]
+          p_review_id: string
+        }
+        Returns: string
+      }
       start_anonymous_review_analysis: {
         Args: { p_access_token_hash: string; p_review_id: string }
         Returns: Database["public"]["Enums"]["review_status"]

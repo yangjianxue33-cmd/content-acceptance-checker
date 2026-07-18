@@ -51,7 +51,7 @@ export function createStartRouteHandler(
         return Response.json({
           reviewId,
           status: result.status,
-          reportPath: `/review/report/${reviewId}`,
+          reportPath: `/report/${reviewId}`,
         });
       }
       await dependencies.enqueue({ reviewId });

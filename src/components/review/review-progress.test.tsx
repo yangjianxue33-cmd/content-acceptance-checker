@@ -74,7 +74,7 @@ describe("ReviewProgress", () => {
             status: "completed",
             terminal: true,
             reportReady: true,
-            reportPath: `/review/report/${reviewId}`,
+            reportPath: `/report/${reviewId}`,
             modules: statusPayload().modules.map((module) => ({ ...module, status: "complete" })),
           }),
         ),
@@ -88,7 +88,7 @@ describe("ReviewProgress", () => {
     expect(fetcher).toHaveBeenCalledTimes(3);
     expect(screen.getByRole("link", { name: "Open review report" })).toHaveAttribute(
       "href",
-      `/review/report/${reviewId}`,
+      `/report/${reviewId}`,
     );
 
     await act(async () => vi.advanceTimersByTimeAsync(30_000));
@@ -131,7 +131,7 @@ describe("ReviewProgress", () => {
       status: "partial",
       terminal: true,
       reportReady: true,
-      reportPath: `/review/report/${reviewId}`,
+      reportPath: `/report/${reviewId}`,
       modules: statusPayload().modules.map((module) =>
         module.module === "evidence_citations"
           ? { ...module, status: "unavailable", error: "Check temporarily unavailable." }
@@ -160,7 +160,12 @@ describe("ReviewProgress", () => {
   });
 
   test("offers retry for an overall failure", async () => {
-    const failed = statusPayload({ status: "failed", terminal: true });
+    const failed = statusPayload({
+      status: "failed",
+      terminal: true,
+      reportReady: true,
+      reportPath: `/report/${reviewId}`,
+    });
     const fetcher = vi
       .fn()
       .mockImplementationOnce(() => jsonResponse({ reviewId, status: "queued" }, 202))
@@ -169,5 +174,9 @@ describe("ReviewProgress", () => {
     render(<ReviewProgress reviewId={reviewId} fetcher={fetcher} />);
 
     expect(await screen.findByRole("button", { name: "Retry analysis" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open review report" })).toHaveAttribute(
+      "href",
+      `/report/${reviewId}`,
+    );
   });
 });
