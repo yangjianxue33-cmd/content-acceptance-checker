@@ -112,9 +112,11 @@ describe("fetchSafeUrl", () => {
     "2001:db8::1",
     "2002:c000:0201::1",
     "3fff::1",
+    "2620:4f:8000::1",
+    "2606:4700:4700::1111",
     "::ffff:127.0.0.1",
     "::ffff:192.168.1.1",
-  ])("rejects non-public IPv6 %s", async (address) => {
+  ])("rejects every IPv6 citation destination %s", async (address) => {
     const setup = harness({ addresses: { "example.test": [address] } });
 
     await expect(fetchSafeUrl("https://example.test", setup)).rejects.toMatchObject({

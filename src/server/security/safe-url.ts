@@ -12,31 +12,6 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "application/xhtml+xml",
 ]);
 
-const IPV6_SPECIAL_PURPOSE_DENY_PREFIXES = [
-  { purpose: "orchid_v2", prefix: [0x20, 0x01, 0x00, 0x20], bits: 28 },
-  {
-    purpose: "documentation",
-    prefix: [0x20, 0x01, 0x0d, 0xb8],
-    bits: 32,
-  },
-  {
-    purpose: "documentation",
-    prefix: [0x3f, 0xff, 0x00],
-    bits: 20,
-  },
-  {
-    purpose: "benchmarking",
-    prefix: [0x20, 0x01, 0x00, 0x02, 0x00, 0x00],
-    bits: 48,
-  },
-  {
-    purpose: "ietf_protocol_assignments",
-    prefix: [0x20, 0x01, 0x00],
-    bits: 23,
-  },
-  { purpose: "six_to_four", prefix: [0x20, 0x02], bits: 16 },
-] as const;
-
 export type SafeUrlErrorCode =
   | "invalid_url"
   | "unsupported_protocol"
@@ -117,74 +92,8 @@ function isPublicIpv4(address: string) {
   );
 }
 
-function ipv6Bytes(address: string) {
-  const withoutZone = address.split("%")[0].toLowerCase();
-  if (withoutZone !== address.toLowerCase()) return null;
-  let normalized = withoutZone;
-  const dottedIndex = normalized.lastIndexOf(":");
-  if (normalized.includes(".") && dottedIndex >= 0) {
-    const v4 = ipv4Bytes(normalized.slice(dottedIndex + 1));
-    if (!v4) return null;
-    normalized = `${normalized.slice(0, dottedIndex)}:${((v4[0] << 8) | v4[1]).toString(16)}:${((v4[2] << 8) | v4[3]).toString(16)}`;
-  }
-
-  const halves = normalized.split("::");
-  if (halves.length > 2) return null;
-  const left = halves[0] ? halves[0].split(":") : [];
-  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
-  const missing = 8 - left.length - right.length;
-  if ((halves.length === 1 && missing !== 0) || missing < 0) return null;
-  const groups = [
-    ...left,
-    ...Array.from({ length: halves.length === 2 ? missing : 0 }, () => "0"),
-    ...right,
-  ];
-  if (groups.length !== 8 || groups.some((group) => !/^[0-9a-f]{1,4}$/.test(group))) {
-    return null;
-  }
-  return groups.flatMap((group) => {
-    const value = Number.parseInt(group, 16);
-    return [value >> 8, value & 0xff];
-  });
-}
-
-function hasPrefix(bytes: number[], prefix: number[], bits: number) {
-  const wholeBytes = Math.floor(bits / 8);
-  for (let index = 0; index < wholeBytes; index += 1) {
-    if (bytes[index] !== prefix[index]) return false;
-  }
-  const remaining = bits % 8;
-  if (remaining === 0) return true;
-  const mask = 0xff << (8 - remaining);
-  return (bytes[wholeBytes] & mask) === (prefix[wholeBytes] & mask);
-}
-
-function isPublicIpv6(address: string) {
-  const bytes = ipv6Bytes(address);
-  if (!bytes) return false;
-  const mapped =
-    bytes.slice(0, 10).every((byte) => byte === 0) &&
-    bytes[10] === 0xff &&
-    bytes[11] === 0xff;
-  if (mapped) {
-    return isPublicIpv4(bytes.slice(12).join("."));
-  }
-
-  const globalUnicast = hasPrefix(bytes, [0x20], 3);
-  if (!globalUnicast) return false;
-  const specialPurpose = IPV6_SPECIAL_PURPOSE_DENY_PREFIXES.some(
-    ({ prefix, bits }) => hasPrefix(bytes, [...prefix], bits),
-  );
-  if (specialPurpose) {
-    return false;
-  }
-  return true;
-}
-
 function isPublicAddress(address: ResolvedAddress) {
-  return address.family === 4
-    ? isPublicIpv4(address.address)
-    : isPublicIpv6(address.address);
+  return address.family === 4 && isPublicIpv4(address.address);
 }
 
 function validateUrl(rawUrl: string) {
