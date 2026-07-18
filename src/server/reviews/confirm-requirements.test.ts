@@ -18,6 +18,7 @@ import {
 const reviewId = "11111111-1111-4111-8111-111111111111";
 const accessToken = "anonymous-cookie-token";
 const tokenHashSecret = "t".repeat(32);
+const accessTokenHash = hashAccessToken(accessToken, tokenHashSecret);
 const encryptionKey = Buffer.alloc(32, 23).toString("base64");
 const now = new Date("2026-07-18T08:00:00.000Z");
 
@@ -31,7 +32,7 @@ const extracted = {
 function review(overrides: Record<string, unknown> = {}) {
   return {
     id: reviewId,
-    anonymousAccessTokenHash: hashAccessToken(accessToken, tokenHashSecret),
+    anonymousAccessTokenHash: accessTokenHash,
     deleteAt: "2026-07-19T08:00:00.000Z",
     briefPresent: true,
     status: "awaiting_brief_confirmation" as const,
@@ -78,7 +79,13 @@ describe("loadRequirementsForConfirmation", () => {
       articleText: "PRIVATE ARTICLE",
       briefText: "PRIVATE BRIEF",
     });
-    expect(setup.replace).toHaveBeenCalledWith(reviewId, [extracted], false);
+    expect(setup.replace).toHaveBeenCalledWith(
+      reviewId,
+      accessTokenHash,
+      [extracted],
+      false,
+    );
+    expect(JSON.stringify(setup.replace.mock.calls)).not.toContain(accessToken);
     expect(result).toEqual({
       kind: "editor",
       reviewId,
@@ -183,6 +190,24 @@ describe("loadRequirementsForConfirmation", () => {
     });
     expect(setup.extractBrief).not.toHaveBeenCalled();
   });
+
+  test("returns access denied if ownership is revoked between load and draft replacement", async () => {
+    const setup = harness();
+    setup.replace.mockRejectedValue(new RequirementsAccessError());
+
+    const promise = loadRequirementsForConfirmation(
+      { reviewId, accessToken },
+      setup.dependencies,
+    );
+
+    await expect(promise).rejects.toBeInstanceOf(RequirementsAccessError);
+    expect(setup.replace).toHaveBeenCalledWith(
+      reviewId,
+      accessTokenHash,
+      [extracted],
+      false,
+    );
+  });
 });
 
 describe("confirmRequirements", () => {
@@ -213,9 +238,29 @@ describe("confirmRequirements", () => {
 
     expect(setup.replace).toHaveBeenCalledWith(
       reviewId,
+      accessTokenHash,
       editedRequirements,
       true,
     );
+  });
+
+  test("returns access denied if the review expires between load and confirmation", async () => {
+    const setup = harness();
+    setup.replace.mockRejectedValue(new RequirementsAccessError());
+
+    const promise = confirmRequirements(
+      { reviewId, accessToken, requirements: [extracted] },
+      setup.dependencies,
+    );
+
+    await expect(promise).rejects.toBeInstanceOf(RequirementsAccessError);
+    expect(setup.replace).toHaveBeenCalledWith(
+      reviewId,
+      accessTokenHash,
+      [extracted],
+      true,
+    );
+    expect(JSON.stringify(setup.replace.mock.calls)).not.toContain(accessToken);
   });
 
   test("keeps the first confirmed set when a divergent repeat arrives", async () => {
@@ -227,9 +272,11 @@ describe("confirmRequirements", () => {
         load: vi.fn().mockImplementation(async () => review({ status })),
         replace: vi.fn().mockImplementation(async (
           _id: string,
+          suppliedHash: string,
           requirements: unknown[],
           confirm: boolean,
         ) => {
+          expect(suppliedHash).toBe(accessTokenHash);
           if (confirm && status === "awaiting_brief_confirmation") {
             persisted = requirements;
             status = "queued";

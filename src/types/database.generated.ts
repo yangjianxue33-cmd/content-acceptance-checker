@@ -378,6 +378,7 @@ export type Database = {
       }
       replace_review_requirements: {
         Args: {
+          p_access_token_hash: string
           p_confirm: boolean
           p_requirements: Json
           p_review_id: string

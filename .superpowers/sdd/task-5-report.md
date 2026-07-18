@@ -23,9 +23,9 @@
 ## Required gates
 
 - `pnpm exec supabase db reset`: exit 0; all three migrations applied successfully.
-- `pnpm test:db`: exit 0; 3 files and 106/106 pgTAP assertions passed.
+- `pnpm test:db`: exit 0; 3 files and 112/112 pgTAP assertions passed after the independent-review fixes.
 - `pnpm exec supabase db lint --local`: exit 0; 0 schema errors.
-- `pnpm vitest run`: exit 0; 12 files and 94/94 tests passed after the final production change.
+- `pnpm vitest run`: exit 0; 12 files and 97/97 tests passed after the independent-review fixes.
 - `pnpm typecheck`: exit 0.
 - `pnpm lint`: exit 0 with 0 errors and 0 warnings.
 - `pnpm build`: exit 0; Next.js 16.2.10 production build completed with dynamic `/review/brief-confirmation` and `/api/reviews/[id]/requirements` routes.
@@ -35,5 +35,14 @@
 
 - Production Task 5 code contains no `console` logging and sends no article text, complete brief text, token, or token hash in JSON, URLs, client props, provider metadata, or errors.
 - Only editable requirement text and intentionally cited source excerpts are passed to the client editor.
-- Provider requests delimit article and brief text as untrusted data and explicitly prohibit following embedded instructions.
+- Provider requests carry article and brief text only as base64 fields in a strict JSON envelope; instructions explicitly classify the decoded fields as untrusted data and prohibit following embedded instructions.
 - `.env.example` already contained empty placeholders for `OPENAI_API_KEY` and `OPENAI_ANALYSIS_MODEL`; no environment-file change was needed.
+
+## Independent review follow-up
+
+- Replaced escapable XML-like prompt delimiters with a deterministic JSON envelope containing explicit `base64` encoding and UTF-8 article/brief fields. Adversarial tests include closing tags, role-shaped JSON, and injection text; they prove the request remains exactly one system message plus one user message and raw structural/injection text never enters the prompt framing.
+- Extended `replace_review_requirements` with `p_access_token_hash`. The service derives the HMAC and passes only that hash to the repository/RPC; the raw cookie token never reaches Postgres.
+- The RPC now locks the parent row, then checks existence, hash equality, and `delete_at > now()` before idempotent return, payload validation, deletion, insertion, or status transition. Missing, wrong, and expired access all raise the same safe `P0001: review_access_denied`, which the route maps through `RequirementsAccessError` to the existing generic 404 response.
+- Added service regressions for revocation/expiry between initial load and atomic replacement, plus pgTAP assertions for wrong hash, expired review, missing review, unchanged requirements, and unchanged status.
+- Review-fix RED/GREEN: prompt tests failed 2/12 before framing changes and passed 12/12 after; service tests failed 5/17 before atomic hash propagation/error preservation and passed 17/17 after; Task 5 pgTAP failed on the missing four-argument RPC and passed 25/25 after migration changes.
+- Review-fix targeted gate: 3 files and 35/35 Vitest assertions passed with typecheck exit 0. Full gates: DB reset passed; pgTAP 112/112; DB lint clean; Vitest 97/97; typecheck, ESLint, production build, and diff check all passed.

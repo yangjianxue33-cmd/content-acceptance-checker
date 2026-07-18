@@ -37,6 +37,7 @@ export type RequirementsRepository = {
   load(reviewId: string): Promise<RequirementsReview | null>;
   replace(
     reviewId: string,
+    accessTokenHash: string,
     requirements: EditableRequirement[],
     confirm: boolean,
   ): Promise<ReviewStatus>;
@@ -139,14 +140,14 @@ async function loadOwnedReview(
     throw new RequirementsAccessError();
   }
 
-  return review;
+  return { review, accessTokenHash: suppliedHash };
 }
 
 export async function loadRequirementsForConfirmation(
   input: AccessInput,
   dependencies: RequirementsDependencies,
 ) {
-  const review = await loadOwnedReview(input, dependencies);
+  const { review, accessTokenHash } = await loadOwnedReview(input, dependencies);
   const nextPath = `/review/progress/${input.reviewId}`;
 
   if (!review.briefPresent || review.status === "queued") {
@@ -183,6 +184,7 @@ export async function loadRequirementsForConfirmation(
     });
     await dependencies.repository.replace(
       input.reviewId,
+      accessTokenHash,
       requirements,
       false,
     );
@@ -191,7 +193,8 @@ export async function loadRequirementsForConfirmation(
       reviewId: input.reviewId,
       requirements,
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof RequirementsAccessError) throw error;
     throw new RequirementsLoadError("source_unavailable");
   }
 }
@@ -200,7 +203,7 @@ export async function confirmRequirements(
   input: AccessInput & { requirements: unknown },
   dependencies: RequirementsDependencies,
 ) {
-  await loadOwnedReview(input, dependencies);
+  const { accessTokenHash } = await loadOwnedReview(input, dependencies);
   const parsed = editableRequirementsSchema.safeParse(input.requirements);
   if (!parsed.success) {
     throw new RequirementsValidationError();
@@ -209,10 +212,12 @@ export async function confirmRequirements(
   try {
     await dependencies.repository.replace(
       input.reviewId,
+      accessTokenHash,
       parsed.data,
       true,
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof RequirementsAccessError) throw error;
     throw new RequirementsLoadError("confirmation_failed");
   }
 
@@ -306,7 +311,7 @@ async function productionDependencies(): Promise<RequirementsDependencies> {
           })),
         };
       },
-      async replace(reviewId, requirements, confirm) {
+      async replace(reviewId, accessTokenHash, requirements, confirm) {
         const payload = requirements.map((requirement) => ({
           category: requirement.category,
           requirement_text: requirement.text,
@@ -315,9 +320,16 @@ async function productionDependencies(): Promise<RequirementsDependencies> {
         }));
         const { data, error } = await client.rpc("replace_review_requirements", {
           p_review_id: reviewId,
+          p_access_token_hash: accessTokenHash,
           p_requirements: payload,
           p_confirm: confirm,
         });
+        if (
+          error?.code === "P0001" &&
+          error.message === "review_access_denied"
+        ) {
+          throw new RequirementsAccessError();
+        }
         if (
           error ||
           (data !== "awaiting_brief_confirmation" && data !== "queued")

@@ -1,5 +1,6 @@
 create function public.replace_review_requirements(
   p_review_id uuid,
+  p_access_token_hash text,
   p_requirements jsonb,
   p_confirm boolean
 )
@@ -12,15 +13,33 @@ declare
   supplied_requirements jsonb := coalesce(p_requirements, '[]'::jsonb);
   current_status public.review_status;
   has_brief boolean;
+  stored_access_token_hash text;
+  access_expires_at timestamptz;
 begin
-  select reviews.status, reviews.brief_present
-  into current_status, has_brief
+  select
+    reviews.status,
+    reviews.brief_present,
+    reviews.anonymous_access_token_hash,
+    reviews.delete_at
+  into
+    current_status,
+    has_brief,
+    stored_access_token_hash,
+    access_expires_at
   from public.reviews
   where reviews.id = p_review_id
   for update;
 
   if not found then
-    raise exception 'review not found' using errcode = 'P0002';
+    raise exception 'review_access_denied' using errcode = 'P0001';
+  end if;
+
+  if stored_access_token_hash is null
+    or p_access_token_hash is null
+    or stored_access_token_hash <> p_access_token_hash
+    or access_expires_at <= now()
+  then
+    raise exception 'review_access_denied' using errcode = 'P0001';
   end if;
 
   if p_confirm and current_status = 'queued' then
@@ -117,8 +136,8 @@ begin
 end;
 $$;
 
-revoke all on function public.replace_review_requirements(uuid, jsonb, boolean)
+revoke all on function public.replace_review_requirements(uuid, text, jsonb, boolean)
 from public, anon, authenticated;
 
-grant execute on function public.replace_review_requirements(uuid, jsonb, boolean)
+grant execute on function public.replace_review_requirements(uuid, text, jsonb, boolean)
 to service_role;

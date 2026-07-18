@@ -2,10 +2,10 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(19);
+select plan(25);
 
 select ok(
-  to_regprocedure('public.replace_review_requirements(uuid,jsonb,boolean)') is not null,
+  to_regprocedure('public.replace_review_requirements(uuid,text,jsonb,boolean)') is not null,
   'atomic requirements replacement RPC exists'
 );
 
@@ -13,7 +13,7 @@ select is(
   (
     select prosecdef
     from pg_proc
-    where oid = to_regprocedure('public.replace_review_requirements(uuid,jsonb,boolean)')
+    where oid = to_regprocedure('public.replace_review_requirements(uuid,text,jsonb,boolean)')
   ),
   true,
   'requirements replacement uses a security-definer boundary'
@@ -23,7 +23,7 @@ select ok(
   coalesce((
     select has_function_privilege('service_role', oid, 'execute')
     from pg_proc
-    where oid = to_regprocedure('public.replace_review_requirements(uuid,jsonb,boolean)')
+    where oid = to_regprocedure('public.replace_review_requirements(uuid,text,jsonb,boolean)')
   ), false),
   'service_role can execute requirements replacement'
 );
@@ -32,7 +32,7 @@ select ok(
   not coalesce((
     select has_function_privilege('anon', oid, 'execute')
     from pg_proc
-    where oid = to_regprocedure('public.replace_review_requirements(uuid,jsonb,boolean)')
+    where oid = to_regprocedure('public.replace_review_requirements(uuid,text,jsonb,boolean)')
   ), false),
   'anon cannot execute requirements replacement'
 );
@@ -41,14 +41,14 @@ select ok(
   not coalesce((
     select has_function_privilege('authenticated', oid, 'execute')
     from pg_proc
-    where oid = to_regprocedure('public.replace_review_requirements(uuid,jsonb,boolean)')
+    where oid = to_regprocedure('public.replace_review_requirements(uuid,text,jsonb,boolean)')
   ), false),
   'authenticated cannot execute requirements replacement'
 );
 
 select ok(
   lower(pg_get_functiondef(
-    to_regprocedure('public.replace_review_requirements(uuid,jsonb,boolean)')
+    to_regprocedure('public.replace_review_requirements(uuid,text,jsonb,boolean)')
   )) like '%for update%',
   'requirements replacement locks the parent review row'
 );
@@ -66,13 +66,76 @@ insert into public.reviews (
     '55555555-5555-4555-8555-555555555552', repeat('b', 64), 'Rollback review',
     'other', 'pasted_text', 400, true, 'awaiting_brief_confirmation',
     decode('334455', 'hex'), now() + interval '24 hours'
+  ),
+  (
+    '55555555-5555-4555-8555-555555555553', repeat('c', 64), 'Expired review',
+    'other', 'pasted_text', 400, true, 'awaiting_brief_confirmation',
+    decode('667788', 'hex'), now() - interval '1 second'
   );
+
+set local role service_role;
+select throws_ok(
+  $$
+    select public.replace_review_requirements(
+      '55555555-5555-4555-8555-555555555551', repeat('f', 64), '[]'::jsonb, false
+    )
+  $$,
+  'P0001',
+  'review_access_denied',
+  'a wrong access hash is denied under the parent-row lock'
+);
+reset role;
+
+select results_eq(
+  $$ select count(*)::bigint from public.requirements where review_id = '55555555-5555-4555-8555-555555555551' $$,
+  $$ values (0::bigint) $$,
+  'wrong access hash performs no requirements mutation'
+);
+
+set local role service_role;
+select throws_ok(
+  $$
+    select public.replace_review_requirements(
+      '55555555-5555-4555-8555-555555555553', repeat('c', 64), '[]'::jsonb, true
+    )
+  $$,
+  'P0001',
+  'review_access_denied',
+  'an expired review is denied under the parent-row lock'
+);
+reset role;
+
+select results_eq(
+  $$ select count(*)::bigint from public.requirements where review_id = '55555555-5555-4555-8555-555555555553' $$,
+  $$ values (0::bigint) $$,
+  'expired access performs no requirements mutation'
+);
+
+select results_eq(
+  $$ select status::text from public.reviews where id = '55555555-5555-4555-8555-555555555553' $$,
+  $$ values ('awaiting_brief_confirmation'::text) $$,
+  'expired access does not advance review status'
+);
+
+set local role service_role;
+select throws_ok(
+  $$
+    select public.replace_review_requirements(
+      '55555555-5555-4555-8555-555555555559', repeat('9', 64), '[]'::jsonb, true
+    )
+  $$,
+  'P0001',
+  'review_access_denied',
+  'a missing review uses the same safe access-denied code'
+);
+reset role;
 
 set local role service_role;
 select lives_ok(
   $$
     select public.replace_review_requirements(
       '55555555-5555-4555-8555-555555555551',
+      repeat('a', 64),
       '[
         {
           "category": "Audience",
@@ -114,6 +177,7 @@ select lives_ok(
   $$
     select public.replace_review_requirements(
       '55555555-5555-4555-8555-555555555551',
+      repeat('a', 64),
       '[{
         "category": "Replacement",
         "requirement_text": "Use the replacement draft.",
@@ -142,6 +206,7 @@ select lives_ok(
   $$
     select public.replace_review_requirements(
       '55555555-5555-4555-8555-555555555551',
+      repeat('a', 64),
       '[{
         "category": "Confirmed",
         "requirement_text": "Keep the accepted version.",
@@ -181,6 +246,7 @@ select lives_ok(
   $$
     select public.replace_review_requirements(
       '55555555-5555-4555-8555-555555555551',
+      repeat('a', 64),
       '[{
         "category": "Divergent retry",
         "requirement_text": "This must not replace the first confirmation.",
@@ -207,6 +273,7 @@ select results_eq(
 set local role service_role;
 select public.replace_review_requirements(
   '55555555-5555-4555-8555-555555555552',
+  repeat('b', 64),
   '[{
     "category": "Original",
     "requirement_text": "Preserve this draft.",
@@ -220,6 +287,7 @@ select throws_ok(
   $$
     select public.replace_review_requirements(
       '55555555-5555-4555-8555-555555555552',
+      repeat('b', 64),
       '[
         {
           "category": "Valid",
@@ -263,7 +331,7 @@ set local role anon;
 select throws_ok(
   $$
     select public.replace_review_requirements(
-      '55555555-5555-4555-8555-555555555552', '[]'::jsonb, false
+      '55555555-5555-4555-8555-555555555552', repeat('b', 64), '[]'::jsonb, false
     )
   $$,
   '42501',
