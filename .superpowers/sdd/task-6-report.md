@@ -44,3 +44,13 @@
 - Public status omits source text, brief/requirements excerpts, fetched pages, provider payloads, hashes, tokens, raw errors, and raw probabilities.
 - Retry reuses the same review and unique module rows. Only queued/unavailable work can be claimed; completed/not-assessed modules are not rerun.
 - No deterministic E2E provider wiring, report UI, decision workflow, or other Task 7/8 functionality was added.
+
+## Review-fix follow-up (2026-07-19)
+
+- Corrected the GPTZero response contract to require official lowercase `human`, `ai`, and `mixed` probability keys and lowercase confidence categories while retaining strict uppercase document classifications. `predicted_class` accepts the documented lowercase labels and uppercase classification labels; mapping uses only `class_probabilities.ai`, and persisted/public output still excludes raw probabilities and provider payloads.
+- Isolated provider construction with independent factories and safe fallbacks. GPTZero initialization failure now affects only `ai_risk`; OpenAI initialization failure affects only `brief_fit`, `evidence_citations`, and `editorial_quality`. Every affected module is still claimed and persisted as terminal `unavailable`, so Trigger finalization continues.
+- Added an explicit conservative IPv6 special-purpose deny table covering ORCHIDv2 `2001:20::/28`, IETF protocol assignments (including Teredo), 6to4, benchmarking, and documentation ranges. Validated addresses remain pinned to transport and redirects remain independently resolved and checked.
+- Added forward migration `202607190002_harden_analysis_write_boundaries.sql`. Authenticated clients retain owner-scoped SELECT but no longer have INSERT/UPDATE/DELETE grants or mutation policies on `analysis_modules` and `issues`; service-role writes remain available.
+- Review-fix RED evidence: official GPTZero fixtures produced 11 failures; provider isolation tests failed because the factory did not exist; four special-purpose IPv6 destinations were accepted; and pgTAP reported the three extra authenticated privileges on each output table. Each slice was made GREEN before continuing.
+- Review-fix targeted gates: 4 files and 74/74 Vitest assertions passed; the new database boundary file passed 11/11 assertions.
+- Review-fix full gates: database reset applied all five migrations; all 5 pgTAP files passed 151/151 assertions; DB lint returned zero findings; all 19 Vitest files passed 186/186 tests; typecheck, ESLint, production build, and `git diff --check` all exited 0.

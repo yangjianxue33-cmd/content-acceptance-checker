@@ -65,6 +65,49 @@ export type ModuleRunnerDependencies = {
   validateCitation: (url: string) => Promise<SafeUrlResult>;
 };
 
+type AnalysisProviderFactories = {
+  createAnalyzer: () => ModuleWritingAnalyzer;
+  createAiRiskProvider: () => AiRiskProvider;
+};
+
+const unavailableAnalyzer: ModuleWritingAnalyzer = {
+  async analyzeBriefFit() {
+    throw new Error("provider_unavailable");
+  },
+  async analyzeEvidenceCitations() {
+    throw new Error("provider_unavailable");
+  },
+  async analyzeEditorialQuality() {
+    throw new Error("provider_unavailable");
+  },
+};
+
+const unavailableAiRiskProvider: AiRiskProvider = {
+  async assess() {
+    return {
+      status: "unavailable",
+      risk: null,
+      confidence: null,
+      caveats: ["AI-writing risk could not be assessed."],
+      errorCode: "provider_failed",
+    };
+  },
+};
+
+export function createIsolatedAnalysisProviders(
+  factories: AnalysisProviderFactories,
+): Pick<ModuleRunnerDependencies, "analyzer" | "aiRiskProvider"> {
+  let analyzer = unavailableAnalyzer;
+  let aiRiskProvider = unavailableAiRiskProvider;
+  try {
+    analyzer = factories.createAnalyzer();
+  } catch {}
+  try {
+    aiRiskProvider = factories.createAiRiskProvider();
+  } catch {}
+  return { analyzer, aiRiskProvider };
+}
+
 function unavailable(module: AnalysisModule): PersistedModuleResult {
   return {
     module,
@@ -243,10 +286,13 @@ export async function createProductionModuleRunnerDependencies(): Promise<Module
   const encryptionKey = process.env.SOURCE_TEXT_ENCRYPTION_KEY;
   if (!encryptionKey) throw new Error("Missing source encryption key");
   const client = createClient();
+  const providers = createIsolatedAnalysisProviders({
+    createAnalyzer: () => new OpenAIStructuredWritingAnalyzer(),
+    createAiRiskProvider: () => new GptZeroAiRiskProvider(),
+  });
 
   return {
-    analyzer: new OpenAIStructuredWritingAnalyzer(),
-    aiRiskProvider: new GptZeroAiRiskProvider(),
+    ...providers,
     validateCitation: fetchSafeUrl,
     repository: {
       async claim(reviewId, module) {

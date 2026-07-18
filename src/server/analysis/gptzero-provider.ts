@@ -6,11 +6,16 @@ const DEFAULT_ENDPOINT = "https://api.gptzero.me/v2/predict/text";
 
 const classProbabilitiesSchema = z
   .object({
-    HUMAN_ONLY: z.number().min(0).max(1),
-    MIXED: z.number().min(0).max(1),
-    AI_ONLY: z.number().min(0).max(1),
+    human: z.number().min(0).max(1),
+    mixed: z.number().min(0).max(1),
+    ai: z.number().min(0).max(1),
   })
   .strict();
+
+const predictedClassSchema = z.union([
+  z.enum(["human", "mixed", "ai"]),
+  z.enum(["HUMAN_ONLY", "MIXED", "AI_ONLY"]),
+]);
 
 const providerResponseSchema = z
   .object({
@@ -24,15 +29,8 @@ const providerResponseSchema = z
               "AI_ONLY",
             ]),
             class_probabilities: classProbabilitiesSchema,
-            predicted_class: z.enum(["HUMAN_ONLY", "MIXED", "AI_ONLY"]),
-            confidence_category: z.enum([
-              "LOW",
-              "MEDIUM",
-              "HIGH",
-              "low",
-              "medium",
-              "high",
-            ]),
+            predicted_class: predictedClassSchema,
+            confidence_category: z.enum(["low", "medium", "high"]),
             sentences: z
               .array(
                 z
@@ -196,7 +194,7 @@ export class GptZeroAiRiskProvider implements AiRiskProvider {
     if (!parsed.success) return unavailable("invalid_provider_output");
 
     const document = parsed.data.documents[0];
-    const probability = document.class_probabilities.AI_ONLY;
+    const probability = document.class_probabilities.ai;
     const risk =
       probability >= this.highThreshold
         ? "high"
@@ -207,10 +205,7 @@ export class GptZeroAiRiskProvider implements AiRiskProvider {
     return {
       status: "complete",
       risk,
-      confidence: document.confidence_category.toLowerCase() as
-        | "low"
-        | "medium"
-        | "high",
+      confidence: document.confidence_category,
       caveats: ["AI-writing risk is advisory and does not prove authorship."],
     };
   }

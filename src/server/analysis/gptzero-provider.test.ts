@@ -12,12 +12,12 @@ function providerResponse(aiProbability = 0.72) {
       {
         document_classification: "MIXED",
         class_probabilities: {
-          HUMAN_ONLY: 0.18,
-          MIXED: 0.1,
-          AI_ONLY: aiProbability,
+          human: 0.18,
+          mixed: 0.1,
+          ai: aiProbability,
         },
-        predicted_class: "AI_ONLY",
-        confidence_category: "HIGH",
+        predicted_class: "ai",
+        confidence_category: "high",
         sentences: [{ sentence: "private sentence", highlighted: true }],
       },
     ],
@@ -108,6 +108,19 @@ describe("GptZeroAiRiskProvider", () => {
     });
   });
 
+  test.each(["human", "mixed", "ai", "HUMAN_ONLY", "MIXED", "AI_ONLY"])(
+    "accepts documented predicted_class casing variant %s",
+    async (predictedClass) => {
+      const response = providerResponse();
+      response.documents[0].predicted_class = predictedClass;
+      const { provider } = setup(response);
+
+      await expect(
+        provider.assess({ articleText: article, wordCount: 300 }),
+      ).resolves.toMatchObject({ status: "complete" });
+    },
+  );
+
   test.each<[string, unknown]>([
     ["missing documents", {}],
     [
@@ -123,6 +136,22 @@ describe("GptZeroAiRiskProvider", () => {
       },
     ],
     ["out-of-range probability", providerResponse(1.1)],
+    [
+      "uppercase probability keys",
+      {
+        ...providerResponse(),
+        documents: [
+          {
+            ...providerResponse().documents[0],
+            class_probabilities: {
+              HUMAN_ONLY: 0.18,
+              MIXED: 0.1,
+              AI_ONLY: 0.72,
+            },
+          },
+        ],
+      },
+    ],
     [
       "extra probability field",
       {

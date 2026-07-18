@@ -145,14 +145,12 @@ select results_eq(
   $$,
   $$
     values
-      ('analysis_modules'::text collate "C"),
-      ('issues'::text collate "C"),
       ('requirements'::text collate "C"),
       ('review_decisions'::text collate "C"),
       ('review_files'::text collate "C"),
       ('reviews'::text collate "C")
   $$,
-  'authenticated users have owner-scoped CRUD policies on every review table'
+  'authenticated users have owner-scoped CRUD policies on user-mutable review tables'
 );
 select results_eq(
   $$
@@ -1210,31 +1208,25 @@ select results_eq(
   $$ values (0::bigint) $$,
   'an authenticated user cannot update another owner requirement'
 );
-select results_eq(
+select throws_ok(
   $$
-    with changed as (
-      update public.analysis_modules
-      set status = 'reviewing'
-      where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
-      returning id
-    )
-    select count(*)::bigint from changed
+    update public.analysis_modules
+    set status = 'reviewing'
+    where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
   $$,
-  $$ values (0::bigint) $$,
-  'an authenticated user cannot update another owner analysis module'
+  '42501',
+  'permission denied for table analysis_modules',
+  'authenticated users cannot update analysis modules directly'
 );
-select results_eq(
+select throws_ok(
   $$
-    with changed as (
-      update public.issues
-      set explanation = 'Cross-owner update'
-      where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
-      returning id
-    )
-    select count(*)::bigint from changed
+    update public.issues
+    set explanation = 'Cross-owner update'
+    where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
   $$,
-  $$ values (0::bigint) $$,
-  'an authenticated user cannot update another owner issue'
+  '42501',
+  'permission denied for table issues',
+  'authenticated users cannot update issues directly'
 );
 select results_eq(
   $$

@@ -5,6 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 import { OpenAIStructuredWritingAnalyzer } from "./openai-analyzer";
 import {
   ANALYSIS_MODULES,
+  createIsolatedAnalysisProviders,
   runAllModules,
   runModule,
   type ModuleRunnerDependencies,
@@ -87,6 +88,50 @@ function harness() {
 }
 
 describe("module runner", () => {
+  test("isolates GPTZero initialization failure to ai_risk and persists every module", async () => {
+    const setup = harness();
+    const providers = createIsolatedAnalysisProviders({
+      createAnalyzer: () => setup.dependencies.analyzer,
+      createAiRiskProvider: () => {
+        throw new Error("PRIVATE missing GPTZero configuration");
+      },
+    });
+
+    await expect(
+      runAllModules(reviewId, { ...setup.dependencies, ...providers }),
+    ).resolves.toEqual(["complete", "complete", "complete", "unavailable"]);
+
+    expect(setup.save).toHaveBeenCalledTimes(4);
+    expect(setup.save).toHaveBeenCalledWith(
+      reviewId,
+      expect.objectContaining({ module: "ai_risk", status: "unavailable" }),
+    );
+    expect(JSON.stringify(setup.save.mock.calls)).not.toContain("PRIVATE");
+  });
+
+  test("isolates OpenAI initialization failure to its three modules", async () => {
+    const setup = harness();
+    const providers = createIsolatedAnalysisProviders({
+      createAnalyzer: () => {
+        throw new Error("PRIVATE missing OpenAI configuration");
+      },
+      createAiRiskProvider: () => setup.dependencies.aiRiskProvider,
+    });
+
+    await expect(
+      runAllModules(reviewId, { ...setup.dependencies, ...providers }),
+    ).resolves.toEqual(["unavailable", "unavailable", "unavailable", "complete"]);
+
+    expect(setup.save).toHaveBeenCalledTimes(4);
+    expect(setup.save.mock.calls.map((call) => call[1].status).sort()).toEqual([
+      "complete",
+      "unavailable",
+      "unavailable",
+      "unavailable",
+    ]);
+    expect(JSON.stringify(setup.save.mock.calls)).not.toContain("PRIVATE");
+  });
+
   test("runs and persists four independent module calls", async () => {
     const setup = harness();
 

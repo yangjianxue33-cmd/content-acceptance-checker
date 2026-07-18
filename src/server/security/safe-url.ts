@@ -12,6 +12,31 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "application/xhtml+xml",
 ]);
 
+const IPV6_SPECIAL_PURPOSE_DENY_PREFIXES = [
+  { purpose: "orchid_v2", prefix: [0x20, 0x01, 0x00, 0x20], bits: 28 },
+  {
+    purpose: "documentation",
+    prefix: [0x20, 0x01, 0x0d, 0xb8],
+    bits: 32,
+  },
+  {
+    purpose: "documentation",
+    prefix: [0x3f, 0xff, 0x00],
+    bits: 20,
+  },
+  {
+    purpose: "benchmarking",
+    prefix: [0x20, 0x01, 0x00, 0x02, 0x00, 0x00],
+    bits: 48,
+  },
+  {
+    purpose: "ietf_protocol_assignments",
+    prefix: [0x20, 0x01, 0x00],
+    bits: 23,
+  },
+  { purpose: "six_to_four", prefix: [0x20, 0x02], bits: 16 },
+] as const;
+
 export type SafeUrlErrorCode =
   | "invalid_url"
   | "unsupported_protocol"
@@ -147,11 +172,10 @@ function isPublicIpv6(address: string) {
 
   const globalUnicast = hasPrefix(bytes, [0x20], 3);
   if (!globalUnicast) return false;
-  if (
-    hasPrefix(bytes, [0x20, 0x01, 0x0d, 0xb8], 32) ||
-    hasPrefix(bytes, [0x20, 0x01, 0x00, 0x02], 48) ||
-    hasPrefix(bytes, [0x3f, 0xff], 20)
-  ) {
+  const specialPurpose = IPV6_SPECIAL_PURPOSE_DENY_PREFIXES.some(
+    ({ prefix, bits }) => hasPrefix(bytes, [...prefix], bits),
+  );
+  if (specialPurpose) {
     return false;
   }
   return true;
