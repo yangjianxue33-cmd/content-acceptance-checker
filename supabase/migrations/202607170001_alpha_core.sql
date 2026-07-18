@@ -185,7 +185,8 @@ begin
   end
   into expected_prefix
   from public.reviews
-  where reviews.id = new.review_id;
+  where reviews.id = new.review_id
+  for share;
 
   if not found then
     return new;

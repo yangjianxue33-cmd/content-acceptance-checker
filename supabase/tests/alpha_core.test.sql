@@ -1,8 +1,9 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
+create extension if not exists dblink with schema extensions version '1.2';
 
-select plan(69);
+select plan(70);
 
 select has_table('public', 'reviews', 'reviews table exists');
 select has_table('public', 'requirements', 'requirements table exists');
@@ -574,6 +575,135 @@ update public.review_files
 set object_path = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4/source.txt'
 where id = 'ffffffff-ffff-4fff-8fff-ffffffffff02';
 reset role;
+
+select extensions.dblink_connect(
+  'task_3_review_file_race',
+  'hostaddr=' || host(inet_server_addr())
+    || ' port=' || inet_server_port()
+    || ' dbname=' || current_database()
+    || ' user=postgres password=postgres'
+);
+select extensions.dblink_exec(
+  'task_3_review_file_race',
+  $$
+    delete from public.reviews
+    where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaac0';
+
+    delete from auth.users
+    where id = '33333333-3333-4333-8333-3333333333c0'
+  $$
+);
+select extensions.dblink_exec(
+  'task_3_review_file_race',
+  $$
+    insert into auth.users (
+      id,
+      instance_id,
+      aud,
+      role,
+      email,
+      encrypted_password,
+      email_confirmed_at,
+      raw_app_meta_data,
+      raw_user_meta_data,
+      created_at,
+      updated_at
+    ) values (
+      '33333333-3333-4333-8333-3333333333c0',
+      '00000000-0000-0000-0000-000000000000',
+      'authenticated',
+      'authenticated',
+      'task-3-concurrency-owner@example.test',
+      '',
+      now(),
+      '{"provider":"email","providers":["email"]}',
+      '{}',
+      now(),
+      now()
+    )
+  $$
+);
+select extensions.dblink_exec(
+  'task_3_review_file_race',
+  $$
+    insert into public.reviews (
+      id,
+      owner_id,
+      title,
+      content_type,
+      source_input_type,
+      word_count,
+      brief_present,
+      status,
+      delete_at
+    ) values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaac0',
+      '33333333-3333-4333-8333-3333333333c0',
+      'Task 3 concurrency review',
+      'other',
+      'uploaded_file',
+      100,
+      false,
+      'draft',
+      now() + interval '1 day'
+    )
+  $$
+);
+select extensions.dblink_exec('task_3_review_file_race', 'begin');
+select extensions.dblink_exec(
+  'task_3_review_file_race',
+  $$
+    insert into public.review_files (
+      id,
+      review_id,
+      file_kind,
+      object_path,
+      mime_type,
+      size_bytes
+    ) values (
+      'ffffffff-ffff-4fff-8fff-ffffffffffc0',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaac0',
+      'source',
+      '33333333-3333-4333-8333-3333333333c0/source.txt',
+      'text/plain',
+      100
+    )
+  $$
+);
+select current_setting('lock_timeout') as task_3_previous_lock_timeout \gset
+select set_config('lock_timeout', '250ms', true);
+set local role service_role;
+select throws_ok(
+  $$
+    do $concurrent_owner_update$
+    begin
+      update public.reviews
+      set owner_id = '22222222-2222-4222-8222-222222222222'
+      where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaac0';
+
+      raise exception 'concurrent owner update unexpectedly succeeded'
+        using errcode = 'P0001';
+    end
+    $concurrent_owner_update$
+  $$,
+  '55P03',
+  null,
+  'an open review file insert blocks a concurrent owner-boundary update'
+);
+reset role;
+select set_config('lock_timeout', :'task_3_previous_lock_timeout', true);
+select extensions.dblink_exec('task_3_review_file_race', 'rollback');
+select extensions.dblink_exec(
+  'task_3_review_file_race',
+  $$
+    delete from public.reviews
+    where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaac0';
+
+    delete from auth.users
+    where id = '33333333-3333-4333-8333-3333333333c0'
+  $$
+);
+select extensions.dblink_disconnect('task_3_review_file_race');
 
 select throws_ok(
   $$
