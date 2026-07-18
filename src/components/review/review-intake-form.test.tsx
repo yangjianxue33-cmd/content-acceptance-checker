@@ -160,7 +160,6 @@ describe("ReviewIntakeForm", () => {
       new Response(
         JSON.stringify({
           reviewId: "11111111-1111-4111-8111-111111111111",
-          accessToken: "raw-access-token",
           nextPath:
             "/review/brief-confirmation?reviewId=11111111-1111-4111-8111-111111111111",
         }),

@@ -323,7 +323,6 @@ describe("POST /api/reviews", () => {
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({
       reviewId,
-      accessToken: "raw-access-token",
       nextPath: `/review/progress/${reviewId}`,
     });
     expect(response.headers.get("set-cookie")).toContain(

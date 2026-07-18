@@ -376,6 +376,14 @@ export type Database = {
         }
         Returns: string
       }
+      replace_review_requirements: {
+        Args: {
+          p_confirm: boolean
+          p_requirements: Json
+          p_review_id: string
+        }
+        Returns: Database["public"]["Enums"]["review_status"]
+      }
     }
     Enums: {
       ai_risk: "low" | "medium" | "high" | "not_assessed"

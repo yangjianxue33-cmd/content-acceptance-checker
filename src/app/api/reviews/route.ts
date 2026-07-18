@@ -130,7 +130,6 @@ export function createReviewsPostHandler(
       const response = Response.json(
         {
           reviewId: result.reviewId,
-          accessToken: result.accessToken,
           nextPath: result.nextPath,
         },
         { status: 201 },
