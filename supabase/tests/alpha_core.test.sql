@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(37);
+select plan(66);
 
 select has_table('public', 'reviews', 'reviews table exists');
 select has_table('public', 'requirements', 'requirements table exists');
@@ -236,6 +236,7 @@ select lives_ok(
     insert into public.reviews (
       id,
       owner_id,
+      anonymous_access_token_hash,
       title,
       content_type,
       source_input_type,
@@ -249,6 +250,7 @@ select lives_ok(
       (
         'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
         '11111111-1111-4111-8111-111111111111',
+        null,
         'Owner one review',
         'blog_post',
         'pasted_text',
@@ -261,6 +263,7 @@ select lives_ok(
       (
         'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
         '22222222-2222-4222-8222-222222222222',
+        null,
         'Owner two review',
         'seo_article',
         'uploaded_file',
@@ -269,6 +272,32 @@ select lives_ok(
         'queued',
         decode('02', 'hex'),
         now() + interval '30 days'
+      ),
+      (
+        'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+        '11111111-1111-4111-8111-111111111111',
+        null,
+        'Owner one empty review',
+        'other',
+        'pasted_text',
+        400,
+        false,
+        'draft',
+        decode('03', 'hex'),
+        now() + interval '30 days'
+      ),
+      (
+        'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4',
+        null,
+        'anonymous-review-token-hash',
+        'Anonymous review',
+        'other',
+        'pasted_text',
+        450,
+        false,
+        'draft',
+        decode('04', 'hex'),
+        now() + interval '24 hours'
       );
 
     insert into public.requirements (
@@ -283,6 +312,12 @@ select lives_ok(
       'required_point',
       'Include the required example',
       true
+    ), (
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbc2',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'recommended_point',
+      'Retain this linked requirement',
+      false
     );
 
     insert into public.analysis_modules (
@@ -303,6 +338,7 @@ select lives_ok(
       module,
       issue_type,
       severity,
+      related_requirement_id,
       explanation,
       suggested_action
     ) values (
@@ -311,8 +347,18 @@ select lives_ok(
       'brief_fit',
       'required_point_missing',
       'critical',
+      null,
       'The required example is absent.',
       'Add the required example.'
+    ), (
+      'dddddddd-dddd-4ddd-8ddd-ddddddddddc2',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'brief_fit',
+      'recommended_point_missing',
+      'minor',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbc2',
+      'The recommended point is absent.',
+      'Consider adding the recommended point.'
     );
 
     insert into public.review_decisions (
@@ -358,6 +404,254 @@ select throws_ok(
   'a review cannot contain the same analysis module twice'
 );
 
+select throws_ok(
+  $$
+    insert into public.issues (
+      id,
+      review_id,
+      module,
+      issue_type,
+      severity,
+      related_requirement_id,
+      explanation,
+      suggested_action
+    ) values (
+      'dddddddd-dddd-4ddd-8ddd-dddddddddd01',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'brief_fit',
+      'cross_review_requirement',
+      'major',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      'This issue links to another review.',
+      'Reject the cross-review link.'
+    )
+  $$,
+  '23503',
+  null,
+  'an issue cannot reference a requirement from another review'
+);
+delete from public.issues where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddd01';
+
+select lives_ok(
+  $$
+    delete from public.requirements
+    where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbc2'
+  $$,
+  'deleting a linked requirement does not delete its issue'
+);
+select results_eq(
+  $$
+    select review_id, related_requirement_id
+    from public.issues
+    where id = 'dddddddd-dddd-4ddd-8ddd-ddddddddddc2'
+  $$,
+  $$
+    values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3'::uuid,
+      null::uuid
+    )
+  $$,
+  'requirement deletion nulls only the issue requirement link'
+);
+delete from public.issues where id = 'dddddddd-dddd-4ddd-8ddd-ddddddddddc2';
+
+set local role service_role;
+select throws_ok(
+  $$
+    insert into public.review_files (
+      id,
+      review_id,
+      file_kind,
+      object_path,
+      mime_type,
+      size_bytes
+    ) values (
+      'ffffffff-ffff-4fff-8fff-ffffffffff01',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'source',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3/source.txt',
+      'text/plain',
+      100
+    )
+  $$,
+  '23514',
+  null,
+  'service-role writes require an authenticated review file path to start with owner_id'
+);
+delete from public.review_files where id = 'ffffffff-ffff-4fff-8fff-ffffffffff01';
+
+select lives_ok(
+  $$
+    insert into public.review_files (
+      id,
+      review_id,
+      file_kind,
+      object_path,
+      mime_type,
+      size_bytes
+    ) values (
+      'ffffffff-ffff-4fff-8fff-ffffffffff02',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4',
+      'source',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4/source.txt',
+      'text/plain',
+      100
+    )
+  $$,
+  'service-role writes accept an anonymous review file path starting with review_id'
+);
+select throws_ok(
+  $$
+    update public.review_files
+    set object_path = '11111111-1111-4111-8111-111111111111/anonymous/source.txt'
+    where id = 'ffffffff-ffff-4fff-8fff-ffffffffff02'
+  $$,
+  '23514',
+  null,
+  'service-role updates cannot move anonymous review metadata outside its review_id prefix'
+);
+update public.review_files
+set object_path = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4/source.txt'
+where id = 'ffffffff-ffff-4fff-8fff-ffffffffff02';
+reset role;
+
+select throws_ok(
+  $$
+    insert into public.analysis_modules (
+      id, review_id, module, status, ai_risk
+    ) values (
+      'cccccccc-cccc-4ccc-8ccc-cccccccccc01',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'editorial_quality',
+      'complete',
+      'low'
+    )
+  $$,
+  '23514',
+  null,
+  'non-AI modules cannot persist an AI risk value'
+);
+delete from public.analysis_modules where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccc01';
+select throws_ok(
+  $$
+    insert into public.analysis_modules (
+      id, review_id, module, status, ai_risk
+    ) values (
+      'cccccccc-cccc-4ccc-8ccc-cccccccccc02',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'ai_risk',
+      'complete',
+      'not_assessed'
+    )
+  $$,
+  '23514',
+  null,
+  'a completed AI-risk module requires low, medium, or high risk'
+);
+delete from public.analysis_modules where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccc02';
+select throws_ok(
+  $$
+    insert into public.analysis_modules (
+      id, review_id, module, status, ai_risk
+    ) values (
+      'cccccccc-cccc-4ccc-8ccc-cccccccccc05',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'ai_risk',
+      'complete',
+      null
+    )
+  $$,
+  '23514',
+  null,
+  'a completed AI-risk module cannot omit its risk value'
+);
+delete from public.analysis_modules where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccc05';
+select throws_ok(
+  $$
+    insert into public.analysis_modules (
+      id, review_id, module, status, ai_risk
+    ) values (
+      'cccccccc-cccc-4ccc-8ccc-cccccccccc03',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'ai_risk',
+      'not_assessed',
+      'high'
+    )
+  $$,
+  '23514',
+  null,
+  'a not-assessed AI-risk module stores only not_assessed risk'
+);
+delete from public.analysis_modules where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccc03';
+select throws_ok(
+  $$
+    insert into public.analysis_modules (
+      id, review_id, module, status, ai_risk
+    ) values (
+      'cccccccc-cccc-4ccc-8ccc-cccccccccc06',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'ai_risk',
+      'not_assessed',
+      null
+    )
+  $$,
+  '23514',
+  null,
+  'a not-assessed AI-risk module cannot omit not_assessed risk'
+);
+delete from public.analysis_modules where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccc06';
+select throws_ok(
+  $$
+    insert into public.analysis_modules (
+      id, review_id, module, status, ai_risk
+    ) values (
+      'cccccccc-cccc-4ccc-8ccc-cccccccccc04',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'ai_risk',
+      'queued',
+      'medium'
+    )
+  $$,
+  '23514',
+  null,
+  'a queued AI-risk module cannot persist a risk value'
+);
+delete from public.analysis_modules where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccc04';
+select throws_ok(
+  $$
+    insert into public.analysis_modules (
+      id, review_id, module, status, ai_risk
+    ) values (
+      'cccccccc-cccc-4ccc-8ccc-cccccccccc07',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'ai_risk',
+      'reviewing',
+      'low'
+    )
+  $$,
+  '23514',
+  null,
+  'a reviewing AI-risk module cannot persist a risk value'
+);
+delete from public.analysis_modules where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccc07';
+select throws_ok(
+  $$
+    insert into public.analysis_modules (
+      id, review_id, module, status, ai_risk
+    ) values (
+      'cccccccc-cccc-4ccc-8ccc-cccccccccc08',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'ai_risk',
+      'unavailable',
+      'high'
+    )
+  $$,
+  '23514',
+  null,
+  'an unavailable AI-risk module cannot persist a risk value'
+);
+delete from public.analysis_modules where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccc08';
+
 set local role anon;
 select throws_ok(
   $$ select id from public.reviews $$,
@@ -395,6 +689,114 @@ select throws_ok(
   'permission denied for table review_files',
   'anonymous users cannot query review files directly'
 );
+select throws_ok(
+  $$
+    insert into public.reviews (
+      owner_id,
+      title,
+      content_type,
+      source_input_type,
+      word_count,
+      brief_present,
+      status,
+      delete_at
+    ) values (
+      '11111111-1111-4111-8111-111111111111',
+      'Anonymous direct write',
+      'other',
+      'pasted_text',
+      350,
+      false,
+      'draft',
+      now() + interval '1 day'
+    )
+  $$,
+  '42501',
+  null,
+  'anonymous users cannot create reviews directly'
+);
+select throws_ok(
+  $$
+    insert into public.requirements (
+      review_id, category, requirement_text, is_critical
+    ) values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+      'required_point',
+      'Anonymous direct requirement',
+      true
+    )
+  $$,
+  '42501',
+  null,
+  'anonymous users cannot create requirements directly'
+);
+select throws_ok(
+  $$
+    insert into public.analysis_modules (review_id, module, status)
+    values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'evidence_citations',
+      'queued'
+    )
+  $$,
+  '42501',
+  null,
+  'anonymous users cannot create analysis modules directly'
+);
+select throws_ok(
+  $$
+    insert into public.issues (
+      review_id,
+      module,
+      issue_type,
+      severity,
+      explanation,
+      suggested_action
+    ) values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'editorial_quality',
+      'anonymous_direct_issue',
+      'minor',
+      'Anonymous direct issue.',
+      'Reject the direct write.'
+    )
+  $$,
+  '42501',
+  null,
+  'anonymous users cannot create issues directly'
+);
+select throws_ok(
+  $$
+    insert into public.review_decisions (review_id, decision)
+    values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'ready'
+    )
+  $$,
+  '42501',
+  null,
+  'anonymous users cannot create review decisions directly'
+);
+select throws_ok(
+  $$
+    insert into public.review_files (
+      review_id,
+      file_kind,
+      object_path,
+      mime_type,
+      size_bytes
+    ) values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'source',
+      '11111111-1111-4111-8111-111111111111/anonymous-direct.txt',
+      'text/plain',
+      100
+    )
+  $$,
+  '42501',
+  null,
+  'anonymous users cannot create review files directly'
+);
 reset role;
 
 set local role authenticated;
@@ -405,7 +807,11 @@ select set_config(
 );
 select results_eq(
   $$ select title from public.reviews order by title $$,
-  $$ values ('Owner one review'::text) $$,
+  $$
+    values
+      ('Owner one empty review'::text),
+      ('Owner one review'::text)
+  $$,
   'an authenticated owner reads only their own review'
 );
 select results_eq(
@@ -530,6 +936,138 @@ select throws_ok(
   null,
   'an authenticated user cannot add a child to another owner review'
 );
+select throws_ok(
+  $$
+    insert into public.analysis_modules (review_id, module, status)
+    values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'evidence_citations',
+      'queued'
+    )
+  $$,
+  '42501',
+  null,
+  'an authenticated user cannot add an analysis module to another owner review'
+);
+select throws_ok(
+  $$
+    insert into public.issues (
+      review_id,
+      module,
+      issue_type,
+      severity,
+      explanation,
+      suggested_action
+    ) values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'editorial_quality',
+      'cross_owner_issue',
+      'minor',
+      'Cross-owner issue.',
+      'Reject the cross-owner write.'
+    )
+  $$,
+  '42501',
+  null,
+  'an authenticated user cannot add an issue to another owner review'
+);
+select throws_ok(
+  $$
+    insert into public.review_decisions (review_id, decision)
+    values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'ready'
+    )
+  $$,
+  '42501',
+  null,
+  'an authenticated user cannot add a decision to another owner review'
+);
+select throws_ok(
+  $$
+    insert into public.review_files (
+      review_id,
+      file_kind,
+      object_path,
+      mime_type,
+      size_bytes
+    ) values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+      'source',
+      '11111111-1111-4111-8111-111111111111/cross-owner.txt',
+      'text/plain',
+      100
+    )
+  $$,
+  '42501',
+  null,
+  'an authenticated user cannot add file metadata to another owner review'
+);
+select results_eq(
+  $$
+    with changed as (
+      update public.requirements
+      set category = 'cross_owner_update'
+      where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+      returning id
+    )
+    select count(*)::bigint from changed
+  $$,
+  $$ values (0::bigint) $$,
+  'an authenticated user cannot update another owner requirement'
+);
+select results_eq(
+  $$
+    with changed as (
+      update public.analysis_modules
+      set status = 'reviewing'
+      where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+      returning id
+    )
+    select count(*)::bigint from changed
+  $$,
+  $$ values (0::bigint) $$,
+  'an authenticated user cannot update another owner analysis module'
+);
+select results_eq(
+  $$
+    with changed as (
+      update public.issues
+      set explanation = 'Cross-owner update'
+      where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+      returning id
+    )
+    select count(*)::bigint from changed
+  $$,
+  $$ values (0::bigint) $$,
+  'an authenticated user cannot update another owner issue'
+);
+select results_eq(
+  $$
+    with changed as (
+      update public.review_decisions
+      set decision = 'ready'
+      where id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+      returning id
+    )
+    select count(*)::bigint from changed
+  $$,
+  $$ values (0::bigint) $$,
+  'an authenticated user cannot update another owner decision'
+);
+select results_eq(
+  $$
+    with changed as (
+      update public.review_files
+      set mime_type = 'application/pdf'
+      where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
+      returning id
+    )
+    select count(*)::bigint from changed
+  $$,
+  $$ values (0::bigint) $$,
+  'an authenticated user cannot update another owner file metadata'
+);
 select lives_ok(
   $$
     insert into storage.objects (bucket_id, name, owner_id)
@@ -612,7 +1150,7 @@ select results_eq(
 
 \else
 
-select * from skip(21, 'alpha schema migration is not present yet');
+select * from skip(50, 'alpha schema migration is not present yet');
 
 \endif
 

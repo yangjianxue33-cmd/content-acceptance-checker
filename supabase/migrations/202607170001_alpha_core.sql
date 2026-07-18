@@ -86,7 +86,8 @@ create table public.requirements (
   user_confirmed boolean not null default false,
   evaluation_result public.requirement_evaluation,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique (review_id, id)
 );
 
 create table public.analysis_modules (
@@ -105,7 +106,18 @@ create table public.analysis_modules (
   updated_at timestamptz not null default now(),
   unique (review_id, module),
   constraint analysis_modules_ai_risk_scope check (
-    module = 'ai_risk' or ai_risk is null
+    case
+      when module <> 'ai_risk' then ai_risk is null
+      when status = 'complete' then coalesce(
+        ai_risk in ('low', 'medium', 'high'),
+        false
+      )
+      when status = 'not_assessed' then coalesce(
+        ai_risk = 'not_assessed',
+        false
+      )
+      else ai_risk is null
+    end
   )
 );
 
@@ -120,7 +132,7 @@ create table public.issues (
   source_end integer check (
     source_end is null or source_end >= coalesce(source_start, 0)
   ),
-  related_requirement_id uuid references public.requirements(id) on delete set null,
+  related_requirement_id uuid,
   explanation text not null check (length(trim(explanation)) > 0),
   suggested_action text not null check (length(trim(suggested_action)) > 0),
   confidence public.confidence_band,
@@ -130,7 +142,11 @@ create table public.issues (
   updated_at timestamptz not null default now(),
   constraint issues_ai_risk_not_critical check (
     module <> 'ai_risk' or severity <> 'critical'
-  )
+  ),
+  constraint issues_related_requirement_same_review_fk
+    foreign key (review_id, related_requirement_id)
+    references public.requirements(review_id, id)
+    on delete set null (related_requirement_id)
 );
 
 create table public.review_decisions (
@@ -153,6 +169,42 @@ create table public.review_files (
   updated_at timestamptz not null default now(),
   unique (review_id, file_kind)
 );
+
+create function public.enforce_review_file_object_path_prefix()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  expected_prefix text;
+begin
+  select case
+    when reviews.owner_id is not null then reviews.owner_id::text
+    else reviews.id::text
+  end
+  into expected_prefix
+  from public.reviews
+  where reviews.id = new.review_id;
+
+  if not found then
+    return new;
+  end if;
+
+  if split_part(new.object_path, '/', 1) is distinct from expected_prefix then
+    raise exception 'review file object path has an invalid review prefix'
+      using
+        errcode = '23514',
+        constraint = 'review_files_object_path_prefix';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger review_files_enforce_object_path_prefix
+before insert or update of review_id, object_path on public.review_files
+for each row execute function public.enforce_review_file_object_path_prefix();
 
 create index reviews_owner_id_idx on public.reviews(owner_id);
 create index reviews_delete_at_idx on public.reviews(delete_at);
@@ -205,6 +257,8 @@ revoke all on table public.issues from public, anon, authenticated;
 revoke all on table public.review_decisions from public, anon, authenticated;
 revoke all on table public.review_files from public, anon, authenticated;
 revoke all on function public.set_updated_at() from public, anon, authenticated;
+revoke all on function public.enforce_review_file_object_path_prefix()
+from public, anon, authenticated;
 
 grant select (
   id,

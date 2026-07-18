@@ -147,11 +147,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "issues_related_requirement_id_fkey"
-            columns: ["related_requirement_id"]
+            foreignKeyName: "issues_related_requirement_same_review_fk"
+            columns: ["review_id", "related_requirement_id"]
             isOneToOne: false
             referencedRelation: "requirements"
-            referencedColumns: ["id"]
+            referencedColumns: ["review_id", "id"]
           },
           {
             foreignKeyName: "issues_review_id_fkey"
