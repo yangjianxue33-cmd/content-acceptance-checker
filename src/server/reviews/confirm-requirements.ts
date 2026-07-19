@@ -232,11 +232,10 @@ function byteaBytes(value: string) {
 }
 
 async function productionDependencies(): Promise<RequirementsDependencies> {
-  const [{ createClient }, { OpenAIStructuredWritingAnalyzer }] =
-    await Promise.all([
-      import("@/server/supabase/admin"),
-      import("@/server/analysis/openai-analyzer"),
-    ]);
+  const [{ createClient }, { isFakeAnalysisEnabled }] = await Promise.all([
+    import("@/server/supabase/admin"),
+    import("@/server/security/fake-analysis-guard"),
+  ]);
   const tokenHashSecret = process.env.TOKEN_HASH_SECRET;
   const sourceTextEncryptionKey = process.env.SOURCE_TEXT_ENCRYPTION_KEY;
   if (!tokenHashSecret || !sourceTextEncryptionKey) {
@@ -244,10 +243,14 @@ async function productionDependencies(): Promise<RequirementsDependencies> {
   }
 
   const client = createClient();
+  const analyzer = isFakeAnalysisEnabled()
+    ? new (await import("@/server/analysis/fake-analysis")).FakeWritingAnalyzer()
+    : new (await import("@/server/analysis/openai-analyzer"))
+        .OpenAIStructuredWritingAnalyzer();
   return {
     tokenHashSecret,
     sourceTextEncryptionKey,
-    analyzer: new OpenAIStructuredWritingAnalyzer(),
+    analyzer,
     storage: {
       async downloadBrief(objectPath) {
         const { data, error } = await client.storage

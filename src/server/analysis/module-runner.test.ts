@@ -174,6 +174,29 @@ describe("module runner", () => {
     expect(setup.save).not.toHaveBeenCalled();
   });
 
+  test("persists brief fit as not assessed when no brief was supplied", async () => {
+    const setup = harness();
+    setup.loadInput.mockResolvedValue({
+      ...input,
+      briefText: null,
+      requirements: [],
+    });
+
+    await expect(
+      runModule(reviewId, "brief_fit", setup.dependencies),
+    ).resolves.toBe("not_assessed");
+
+    expect(setup.analyzer.analyzeBriefFit).not.toHaveBeenCalled();
+    expect(setup.save).toHaveBeenCalledWith(
+      reviewId,
+      expect.objectContaining({
+        module: "brief_fit",
+        status: "not_assessed",
+        score: null,
+      }),
+    );
+  });
+
   test("reuses one unavailable module row on retry and leaves successful modules untouched", async () => {
     const setup = harness();
     setup.analyzer.analyzeBriefFit.mockRejectedValueOnce(new Error("PRIVATE provider payload"));

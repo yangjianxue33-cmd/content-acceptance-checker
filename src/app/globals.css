@@ -262,11 +262,6 @@ a {
   line-height: 1.65;
 }
 
-.article-textarea::placeholder,
-.brief-panel textarea::placeholder {
-  color: #7b899d;
-}
-
 .field-meta {
   margin-top: 9px;
   display: flex;

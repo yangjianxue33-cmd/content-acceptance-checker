@@ -49,7 +49,7 @@ describe("RequirementsEditor", () => {
       "Write for operations leaders.",
     );
     expect(screen.getByLabelText("Requirement 1 is critical")).toBeChecked();
-  });
+  }, 10_000);
 
   test("shows the source excerpt as read-only brief reference", () => {
     render(

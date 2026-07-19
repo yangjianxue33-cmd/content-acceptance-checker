@@ -10,5 +10,5 @@ Base: `c2a795f`
 - Task 4: complete (commits 909c7b9..7882ff5; independent findings fixed; Vitest 62/62, pgTAP 87/87, full gate clean)
 - Task 5: complete (commits 7882ff5..1161a6e; independent review approved; Vitest 97/97, pgTAP 112/112)
 - Task 6: complete (commits 1161a6e..42939a2; independent review approved; Vitest 188/188, pgTAP 151/151, full gate clean)
-- Task 7: complete (Vitest 219/219, pgTAP 169/169, full gate clean)
-- Task 8: pending
+- Task 7: complete (commits 42939a2..3ad8c19; independent review approved; Vitest 223/223, pgTAP 169/169, full gate clean)
+- Task 8: deterministic implementation and local release gates complete; protected real-provider staging validation blocked only by missing external credentials/target

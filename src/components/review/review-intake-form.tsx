@@ -256,7 +256,6 @@ export function ReviewIntakeForm({ onCreated }: ReviewIntakeFormProps) {
                   setBodyText(event.target.value);
                   setClientError(null);
                 }}
-                placeholder="Paste the headline and full article here…"
                 rows={14}
               />
               <div className="field-meta">
@@ -360,7 +359,6 @@ export function ReviewIntakeForm({ onCreated }: ReviewIntakeFormProps) {
                     setBriefText(event.target.value);
                     setClientError(null);
                   }}
-                  placeholder="Paste requirements, audience, required points, keywords, or citation expectations…"
                   rows={6}
                 />
                 <div className="field-meta">

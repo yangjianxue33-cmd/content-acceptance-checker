@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 type Requirement = {
   id?: string;
@@ -19,6 +19,8 @@ type RequirementsEditorProps = {
   onNavigate?: (nextPath: string) => void;
 };
 
+const subscribeToHydration = () => () => {};
+
 export function RequirementsEditor({
   reviewId,
   initialRequirements,
@@ -33,6 +35,11 @@ export function RequirementsEditor({
     })),
   );
   const [saving, setSaving] = useState(false);
+  const hydrated = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  );
   const [error, setError] = useState<string | null>(null);
   const pendingFocus = useRef<string | null>(null);
   const categoryRefs = useRef(new Map<string, HTMLInputElement>());
@@ -93,8 +100,8 @@ export function RequirementsEditor({
     );
   }
 
-  async function saveRequirements(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveRequirements(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     if (savingRef.current) return;
 
     const invalid = requirements.find(
@@ -281,7 +288,12 @@ export function RequirementsEditor({
         <p>
           Your confirmed list becomes the brief-fit acceptance checklist.
         </p>
-        <button className="review-submit" type="submit" disabled={saving}>
+        <button
+          className="review-submit"
+          type="button"
+          disabled={saving || !hydrated}
+          onClick={() => void saveRequirements()}
+        >
           <span>{saving ? "Saving requirements…" : "Continue to review"}</span>
           <span aria-hidden="true">→</span>
         </button>

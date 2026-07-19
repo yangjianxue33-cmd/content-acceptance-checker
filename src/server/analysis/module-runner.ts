@@ -165,6 +165,20 @@ async function executeModule(
   dependencies: ModuleRunnerDependencies,
 ): Promise<PersistedModuleResult> {
   if (module === "brief_fit") {
+    if (!input.briefText || input.requirements.length === 0) {
+      return {
+        module,
+        status: "not_assessed",
+        score: null,
+        aiRisk: null,
+        summary: "Brief fit was not assessed because no brief was supplied.",
+        caveats: [],
+        errorCode: null,
+        issues: [],
+        citationChecks: [],
+        requirementEvaluations: [],
+      };
+    }
     const result = await dependencies.analyzer.analyzeBriefFit(input);
     return {
       ...baseResult(module, result),
@@ -273,23 +287,40 @@ export async function createProductionModuleRunnerDependencies(): Promise<Module
   const [
     { createClient },
     { decryptSourceText },
-    { OpenAIStructuredWritingAnalyzer },
-    { GptZeroAiRiskProvider },
     { fetchSafeUrl },
+    { isFakeAnalysisEnabled },
   ] = await Promise.all([
     import("@/server/supabase/admin"),
     import("@/server/security/source-text-encryption"),
-    import("@/server/analysis/openai-analyzer"),
-    import("@/server/analysis/gptzero-provider"),
     import("@/server/security/safe-url"),
+    import("@/server/security/fake-analysis-guard"),
   ]);
   const encryptionKey = process.env.SOURCE_TEXT_ENCRYPTION_KEY;
   if (!encryptionKey) throw new Error("Missing source encryption key");
   const client = createClient();
-  const providers = createIsolatedAnalysisProviders({
-    createAnalyzer: () => new OpenAIStructuredWritingAnalyzer(),
-    createAiRiskProvider: () => new GptZeroAiRiskProvider(),
-  });
+  let providers: Pick<
+    ModuleRunnerDependencies,
+    "analyzer" | "aiRiskProvider"
+  >;
+  if (isFakeAnalysisEnabled()) {
+    const { FakeAiRiskProvider, FakeWritingAnalyzer } = await import(
+      "@/server/analysis/fake-analysis"
+    );
+    providers = {
+      analyzer: new FakeWritingAnalyzer(),
+      aiRiskProvider: new FakeAiRiskProvider(),
+    };
+  } else {
+    const [{ OpenAIStructuredWritingAnalyzer }, { GptZeroAiRiskProvider }] =
+      await Promise.all([
+        import("@/server/analysis/openai-analyzer"),
+        import("@/server/analysis/gptzero-provider"),
+      ]);
+    providers = createIsolatedAnalysisProviders({
+      createAnalyzer: () => new OpenAIStructuredWritingAnalyzer(),
+      createAiRiskProvider: () => new GptZeroAiRiskProvider(),
+    });
+  }
 
   return {
     ...providers,

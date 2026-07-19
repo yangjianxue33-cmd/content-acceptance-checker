@@ -23,6 +23,19 @@ function accessTokenFrom(request: Request) {
 }
 
 async function enqueueProduction(payload: { reviewId: string }) {
+  const { isFakeAnalysisEnabled } = await import(
+    "@/server/security/fake-analysis-guard"
+  );
+  if (isFakeAnalysisEnabled()) {
+    const [{ runProductionModules }, { finalizeProductionReview }] =
+      await Promise.all([
+        import("@/server/analysis/module-runner"),
+        import("@/server/reviews/finalize-review"),
+      ]);
+    await runProductionModules(payload.reviewId);
+    await finalizeProductionReview(payload.reviewId);
+    return;
+  }
   await tasks.trigger<typeof analyzeReviewTask>("analyze-review", payload, {
     idempotencyKey: `analysis:${payload.reviewId}`,
     idempotencyKeyTTL: "10s",
