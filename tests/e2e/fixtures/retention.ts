@@ -62,6 +62,10 @@ export async function expireAndCleanReview(reviewId: string) {
         const { error } = await client.storage.from("review-source").remove(paths);
         if (error) throw new Error("E2E retention storage delete failed");
       },
+      async loadOrphanCursor() {
+        return null;
+      },
+      async saveOrphanCursor() {},
       async list() {
         return { objects: [], nextCursor: null };
       },

@@ -20,6 +20,10 @@ export const metadata: Metadata = {
   description: "A focused editorial acceptance review for outsourced content.",
 };
 
+// Nonce-based CSP requires request-time rendering so Next can attach the
+// per-request nonce to its bootstrap scripts.
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: Readonly<{

@@ -28,6 +28,7 @@ function harness(overrides: Partial<ReviewCleanupDependencies> = {}) {
   const reviews = new Map<string, ReviewRetentionRecord>();
   const stored = new Set<string>();
   const calls: string[] = [];
+  let orphanCursor: string | null = null;
 
   const dependencies: ReviewCleanupDependencies = {
     now: () => now,
@@ -47,6 +48,12 @@ function harness(overrides: Partial<ReviewCleanupDependencies> = {}) {
       async remove(paths) {
         calls.push(`storage:${paths.join(",")}`);
         paths.forEach((path) => stored.delete(path));
+      },
+      async loadOrphanCursor() {
+        return orphanCursor;
+      },
+      async saveOrphanCursor(cursor) {
+        orphanCursor = cursor;
       },
       async list() {
         return { objects: [], nextCursor: null };
@@ -186,5 +193,36 @@ describe("deleteExpiredReviews", () => {
     expect(failed).toMatchObject({ orphanObjectsDeleted: 0, failures: 1 });
     expect(retried).toMatchObject({ orphanObjectsDeleted: 1, failures: 0 });
     expect(h.dependencies.storage.remove).toHaveBeenCalledTimes(2);
+  });
+
+  it("continues the bounded orphan sweep from its persisted cursor on the next run", async () => {
+    const h = harness();
+    const firstOld = `${orphanId}/first-old.txt`;
+    const secondOld = `${expiredId}/second-old.txt`;
+    h.dependencies.storage.list = vi.fn(async ({ cursor }) =>
+      cursor === null
+        ? {
+            objects: [object(firstOld, "2026-07-18T10:00:00.000Z")],
+            nextCursor: "page-2",
+          }
+        : {
+            objects: [object(secondOld, "2026-07-18T10:00:00.000Z")],
+            nextCursor: null,
+          },
+    );
+
+    await deleteExpiredReviews(h.dependencies, { maxOrphanPages: 1 });
+    await deleteExpiredReviews(h.dependencies, { maxOrphanPages: 1 });
+
+    expect(h.dependencies.storage.list).toHaveBeenNthCalledWith(1, {
+      cursor: null,
+      limit: 100,
+    });
+    expect(h.dependencies.storage.list).toHaveBeenNthCalledWith(2, {
+      cursor: "page-2",
+      limit: 100,
+    });
+    expect(h.calls).toContain(`storage:${firstOld}`);
+    expect(h.calls).toContain(`storage:${secondOld}`);
   });
 });

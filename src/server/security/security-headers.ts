@@ -1,6 +1,7 @@
 type SecurityHeaderOptions = {
   production: boolean;
   supabaseUrl?: string;
+  nonce?: string;
 };
 
 function safeOrigin(value: string | undefined) {
@@ -19,8 +20,12 @@ export function createSecurityHeaders(options: SecurityHeaderOptions) {
   const supabaseOrigin = safeOrigin(options.supabaseUrl);
   if (supabaseOrigin) connectSources.push(supabaseOrigin);
 
-  const scriptSources = ["'self'", "'unsafe-inline'"];
-  if (!options.production) scriptSources.push("'unsafe-eval'");
+  if (options.production && !options.nonce) {
+    throw new Error("A CSP nonce is required in production");
+  }
+  const scriptSources = options.production
+    ? ["'self'", `'nonce-${options.nonce}'`, "'strict-dynamic'"]
+    : ["'self'", "'unsafe-inline'", "'unsafe-eval'"];
 
   const contentSecurityPolicy = [
     "default-src 'self'",

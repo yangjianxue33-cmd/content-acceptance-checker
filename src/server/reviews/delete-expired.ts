@@ -21,6 +21,8 @@ export type ReviewCleanupDependencies = {
   };
   storage: {
     remove(paths: string[]): Promise<void>;
+    loadOrphanCursor(): Promise<string | null>;
+    saveOrphanCursor(cursor: string | null): Promise<void>;
     list(input: {
       cursor: string | null;
       limit: number;
@@ -48,6 +50,7 @@ const DEFAULT_EXPIRED_REVIEW_LIMIT = 100;
 const DEFAULT_ORPHAN_PAGE_SIZE = 100;
 const DEFAULT_MAX_ORPHAN_PAGES = 10;
 const ORPHAN_MINIMUM_AGE_MS = 25 * 60 * 60 * 1_000;
+const ORPHAN_CURSOR_OBJECT = "_maintenance/retention-orphan-cursor.txt";
 const UUID_PREFIX =
   /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\//i;
 
@@ -114,7 +117,13 @@ export async function deleteExpiredReviews(
     DEFAULT_MAX_ORPHAN_PAGES,
   );
   const orphanCutoffMs = nowMs - ORPHAN_MINIMUM_AGE_MS;
-  let cursor: string | null = null;
+  let cursor: string | null;
+  try {
+    cursor = await dependencies.storage.loadOrphanCursor();
+  } catch {
+    result.failures += 1;
+    return result;
+  }
 
   for (let page = 0; page < maxOrphanPages; page += 1) {
     let listing: Awaited<ReturnType<typeof dependencies.storage.list>>;
@@ -141,6 +150,12 @@ export async function deleteExpiredReviews(
       }
     }
 
+    try {
+      await dependencies.storage.saveOrphanCursor(listing.nextCursor);
+    } catch {
+      result.failures += 1;
+      break;
+    }
     if (!listing.nextCursor) break;
     cursor = listing.nextCursor;
   }
@@ -203,6 +218,23 @@ export async function createProductionReviewCleanupDependencies(): Promise<Revie
       async remove(paths) {
         const { error } = await bucket.remove(paths);
         if (error) throw new Error("retention_storage_delete_failed");
+      },
+      async loadOrphanCursor() {
+        const { data, error } = await bucket.download(ORPHAN_CURSOR_OBJECT);
+        if (error || !data) return null;
+        const cursor = (await data.text()).trim();
+        return cursor || null;
+      },
+      async saveOrphanCursor(cursor) {
+        const { error } = await bucket.upload(
+          ORPHAN_CURSOR_OBJECT,
+          new TextEncoder().encode(cursor ?? ""),
+          {
+            contentType: "text/plain; charset=utf-8",
+            upsert: true,
+          },
+        );
+        if (error) throw new Error("retention_cursor_write_failed");
       },
       async list({ cursor, limit }) {
         const { data, error } = await bucket.listV2({

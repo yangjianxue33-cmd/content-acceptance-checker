@@ -163,7 +163,7 @@ export function RequirementsEditor({
           className="add-requirement"
           type="button"
           onClick={addRequirement}
-          disabled={saving}
+          disabled={saving || !hydrated}
         >
           <span aria-hidden="true">+</span> Add requirement
         </button>
@@ -185,7 +185,11 @@ export function RequirementsEditor({
         {requirements.map((requirement, index) => {
           const number = index + 1;
           return (
-            <fieldset className="requirement-card" key={requirement.editorId}>
+            <fieldset
+              className="requirement-card"
+              key={requirement.editorId}
+              disabled={saving || !hydrated}
+            >
               <legend>
                 <span>Requirement</span>
                 <strong>{String(number).padStart(2, "0")}</strong>

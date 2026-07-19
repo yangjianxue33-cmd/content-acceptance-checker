@@ -30,16 +30,30 @@ describe("createSecurityHeaders", () => {
 
   it("adds HSTS and omits unsafe-eval in production", () => {
     const headers = Object.fromEntries(
-      createSecurityHeaders({ production: true }).map(({ key, value }) => [
-        key,
-        value,
-      ]),
+      createSecurityHeaders({
+        production: true,
+        nonce: "production-request-nonce",
+      }).map(({ key, value }) => [key, value]),
     );
 
     expect(headers["Strict-Transport-Security"]).toBe(
       "max-age=63072000; includeSubDomains; preload",
     );
-    expect(headers["Content-Security-Policy"]).not.toContain("'unsafe-eval'");
+    const scriptDirective = headers["Content-Security-Policy"]
+      .split("; ")
+      .find((directive) => directive.startsWith("script-src"));
+    expect(scriptDirective).not.toContain("'unsafe-eval'");
+    expect(scriptDirective).not.toContain("'unsafe-inline'");
+    expect(scriptDirective).toContain(
+      "'nonce-production-request-nonce'",
+    );
+    expect(scriptDirective).toContain("'strict-dynamic'");
+  });
+
+  it("fails closed when production headers are requested without a nonce", () => {
+    expect(() => createSecurityHeaders({ production: true })).toThrow(
+      "A CSP nonce is required in production",
+    );
   });
 
   it("does not add malformed external origins to CSP", () => {
