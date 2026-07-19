@@ -46,6 +46,9 @@ Date: 2026-07-19
   obsolete input-placeholder styling and attributes.
 - AI-risk copy review: rendered product output remains advisory, does not claim
   authorship or misconduct, and does not auto-reject content.
+- Independent Task 8 review: two Important findings were fixed in `43c3b63`;
+  the follow-up review returned `APPROVED` with no remaining Critical or
+  Important findings.
 
 ## External release blocker
 
