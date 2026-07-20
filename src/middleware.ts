@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { createSecurityHeaders } from "@/server/security/security-headers";
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const nonce = crypto.randomUUID().replaceAll("-", "");
   const securityHeaders = createSecurityHeaders({
     production: process.env.NODE_ENV === "production",
