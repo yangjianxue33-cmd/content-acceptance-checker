@@ -4,6 +4,16 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-07-20",
   "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    {
+      "pattern": "contentpreflight.cc",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.contentpreflight.cc",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
