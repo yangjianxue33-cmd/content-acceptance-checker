@@ -6,8 +6,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "routes": [
     {
-      "pattern": "contentpreflight.cc",
-      "custom_domain": true
+      "pattern": "contentpreflight.cc/*",
+      "zone_name": "contentpreflight.cc"
     },
     {
       "pattern": "www.contentpreflight.cc",
